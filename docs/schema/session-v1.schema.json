@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Splashed Ink session v1",
+  "description": "A recorded painting session. Replaying the events at their ticks reproduces the picture. See docs/DATA_FORMAT.md.",
+  "type": "object",
+  "required": ["format", "id", "app", "startedAt", "tickRate", "stepsPerTick", "seed", "paperSeed", "device", "settings", "endTick", "events"],
+  "properties": {
+    "format": { "const": "splashed-ink-session/v1" },
+    "id": { "type": "string" },
+    "app": { "type": "object", "required": ["name", "version"], "properties": { "name": { "type": "string" }, "version": { "type": "string" } } },
+    "startedAt": { "type": "string" },
+    "endedAt": { "type": ["string", "null"] },
+    "tickRate": { "const": 60 },
+    "stepsPerTick": { "const": 6 },
+    "seed": { "type": "integer", "minimum": 0, "description": "Seeds the random stream used for brush jitter." },
+    "paperSeed": { "type": "integer", "minimum": 0, "description": "Seeds the paper's fibres and permeability." },
+    "device": {
+      "type": "object",
+      "required": ["viewport", "sim"],
+      "properties": {
+        "viewport": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+        "dpr": { "type": "number" },
+        "sim": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "minItems": 2, "maxItems": 2, "description": "Simulation grid size [width, height]. Replays use it, not the replaying device's own size." },
+        "touch": { "type": "boolean" },
+        "tiltSensor": { "type": "boolean" },
+        "lockedSettings": { "type": "boolean" }
+      }
+    },
+    "settings": { "$ref": "#/$defs/settings" },
+    "endTick": { "type": "integer", "minimum": 0 },
+    "summary": { "type": ["object", "null"] },
+    "events": { "type": "array", "items": { "$ref": "#/$defs/event" } }
+  },
+  "$defs": {
+    "settings": {
+      "type": "object",
+      "required": ["undo", "drying", "ink", "words", "sees", "redo"],
+      "properties": {
+        "undo": { "enum": ["none", "one", "unlimited"] },
+        "drying": { "enum": ["slow", "normal", "fast", "instant"] },
+        "ink": { "enum": ["scarce", "normal", "unlimited"] },
+        "words": { "enum": ["off", "on"] },
+        "sees": { "enum": ["paper", "paper+strokes"] },
+        "redo": { "enum": ["final", "redo"] }
+      }
+    },
+    "gesture": {
+      "oneOf": [
+        { "type": "object", "required": ["type", "x", "y", "seconds"], "properties": {
+            "type": { "const": "pour" }, "x": { "type": "number" }, "y": { "type": "number" }, "seconds": { "type": "number" },
+            "path": { "type": "array", "items": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 } }, "ink": { "type": "number" } } },
+        { "type": "object", "required": ["type", "dx", "dy", "seconds"], "properties": {
+            "type": { "const": "tilt" }, "dx": { "type": "number" }, "dy": { "type": "number" }, "seconds": { "type": "number" } } },
+        { "type": "object", "required": ["type", "seconds"], "properties": { "type": { "const": "wait" }, "seconds": { "type": "number" } } }
+      ]
+    },
+    "event": {
+      "type": "object",
+      "required": ["t", "e"],
+      "properties": { "t": { "type": "integer", "minimum": 0 }, "e": { "type": "string" } },
+      "oneOf": [
+        { "properties": { "e": { "enum": ["pd", "pm"] }, "i": { "type": "string" }, "x": { "type": "number" }, "y": { "type": "number" }, "p": { "type": "number" } }, "required": ["i", "x", "y", "p"] },
+        { "properties": { "e": { "const": "pu" }, "i": { "type": "string" } }, "required": ["i"] },
+        { "properties": { "e": { "const": "g" }, "x": { "type": "number" }, "y": { "type": "number" } }, "required": ["x", "y"] },
+        { "properties": { "e": { "const": "k" }, "k": { "enum": ["undo", "drying", "ink", "words", "sees", "redo"] }, "v": { "type": "string" } }, "required": ["k", "v"] },
+        { "properties": { "e": { "const": "st" }, "n": { "type": "integer", "minimum": 1 } }, "required": ["n"] },
+        { "properties": { "e": { "const": "sh" }, "s": { "type": "integer", "minimum": 0 } }, "required": ["s"] },
+        { "properties": { "e": { "enum": ["un", "rd"] } } },
+        { "properties": { "e": { "const": "pot" }, "c": { "type": "number", "minimum": 0, "maximum": 1 } }, "required": ["c"] },
+        { "properties": { "e": { "const": "pa" }, "partner": { "type": "string" }, "words": { "type": "string" }, "sees": { "enum": ["paper", "paper+strokes"] } }, "required": ["partner"] },
+        { "properties": { "e": { "const": "pg" }, "gestures": { "type": "array", "items": { "$ref": "#/$defs/gesture" } } }, "required": ["gestures"] },
+        { "properties": { "e": { "const": "pe" }, "code": { "type": "string" } } },
+        { "properties": { "e": { "const": "pr" }, "partner": { "type": "string" }, "prompt": { "type": "string" } } }
+      ]
+    }
+  }
+}

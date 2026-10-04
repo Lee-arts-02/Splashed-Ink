@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<!-- Splashed Ink. MIT License. See LICENSE at the repository root. -->
+<title>Splashed Ink</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#ece6d6; --panel:#f4efe4; --ink:#1b1d22; --ink-soft:#4a4c52;
+  --seal:#a8322a; --seal-ink:#fbf3ea; --chip:rgba(244,239,228,.84); --chip-line:rgba(27,29,34,.18);
+  --veil:rgba(236,230,214,.92);
+  --serif:"Cormorant Garamond","Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --panel:#202125; --ink:#ece6d6; --chip:rgba(27,29,34,.8); --chip-line:rgba(236,230,214,.22); --ink-soft:#d6d0c2; --veil:rgba(22,23,26,.9);
+  }
+}
+:root[data-theme="dark"]{ --panel:#202125; --ink:#ece6d6; --chip:rgba(27,29,34,.8); --chip-line:rgba(236,230,214,.22); --ink-soft:#d6d0c2; --veil:rgba(22,23,26,.9); }
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{background:var(--paper);font-family:var(--serif);color:var(--ink);font-size:1.05rem;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+button,input{font-family:var(--serif);color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
+[hidden]{display:none!important}
+
+#intro{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--veil);z-index:5;transition:opacity .9s ease;overflow:auto}
+#intro.gone{opacity:0;pointer-events:none}
+.intro-inner{display:flex;flex-direction:column;align-items:flex-start;gap:1.2rem;padding:2rem 1.75rem;width:100%;max-width:27rem}
+.title{font-size:clamp(3.4rem,16vw,5.4rem);font-weight:500;line-height:.9;letter-spacing:-.01em;margin:0}
+.notes{font-size:1.15rem;line-height:1.5;color:var(--ink-soft);margin:0}
+.notes p{margin:0 0 .4rem}
+.fine{font-size:.95rem;color:var(--ink-soft);font-style:italic}
+#start,.seal{font-size:1.2rem;font-weight:600;background:var(--seal);color:var(--seal-ink);border:0;border-radius:3px;padding:.6rem 1rem;
+  line-height:1.1;box-shadow:inset 0 0 0 3px var(--seal),inset 0 0 0 4px rgba(251,243,234,.55)}
+#err{position:fixed;left:1rem;right:1rem;bottom:calc(1rem + env(safe-area-inset-bottom,0px));color:var(--seal);font-size:.95rem;text-align:center;z-index:9}
+
+.hud{position:fixed;z-index:3;display:flex;gap:.5rem;opacity:0;transition:opacity .8s ease .4s}
+.hud.on{opacity:1}
+#hudL{left:calc(.9rem + env(safe-area-inset-left,0px));bottom:calc(.9rem + env(safe-area-inset-bottom,0px));align-items:center}
+#hudR{right:calc(.9rem + env(safe-area-inset-right,0px));bottom:calc(.9rem + env(safe-area-inset-bottom,0px));flex-direction:column;align-items:flex-end}
+#hudTL{left:calc(.9rem + env(safe-area-inset-left,0px));top:calc(.9rem + env(safe-area-inset-top,0px));flex-direction:column;align-items:flex-start;max-width:calc(100vw - 6rem)}
+#hudT{right:calc(.9rem + env(safe-area-inset-right,0px));top:calc(.9rem + env(safe-area-inset-top,0px))}
+.row{display:flex;gap:.5rem;flex-wrap:wrap}
+.chip{background:var(--chip);border:1px solid var(--chip-line);color:var(--ink-soft);border-radius:999px;font-size:1rem;padding:.38rem .8rem;display:flex;align-items:center;gap:.45rem;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.chip:disabled{opacity:.5;cursor:default}
+#pot{width:2.6rem;height:2.6rem;padding:0;border-radius:50%;border:1px solid var(--chip-line);transition:background .3s}
+#pot:disabled{opacity:1;cursor:default}
+#potLabel{color:var(--ink-soft);font-size:1rem;line-height:1.25}
+#newSheet{position:relative;overflow:hidden}
+#newSheet .fill{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--seal);transform:scaleX(0);transform-origin:left}
+#pass{background:var(--seal);color:var(--seal-ink);border-color:var(--seal);font-weight:600}
+#pass:disabled{background:var(--chip);color:var(--ink-soft);border-color:var(--chip-line);font-weight:500;font-style:italic;opacity:1}
+#pass.busy{animation:breathe 2.4s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.55}}
+#words{background:var(--chip);border:1px solid var(--chip-line);border-radius:999px;padding:.4rem .85rem;font-size:1rem;width:min(15rem,60vw);-webkit-user-select:text;user-select:text}
+#level{width:3.2rem;height:3.2rem;padding:0;justify-content:center;position:relative;cursor:grab;touch-action:none}
+#level.drag{cursor:grabbing;border-color:var(--seal)}
+#bubble{width:.55rem;height:.55rem;border-radius:50%;background:var(--ink-soft);position:absolute;left:50%;top:50%;margin:-.275rem 0 0 -.275rem}
+.recdot{width:.5rem;height:.5rem;border-radius:50%;background:var(--seal)}
+#hint{position:fixed;left:1rem;right:4.8rem;top:calc(6.4rem + env(safe-area-inset-top,0px));line-height:1.4;pointer-events:none;border-radius:12px;display:block;
+  z-index:3;font-size:.9rem;color:var(--ink-soft);opacity:0;transition:opacity .6s}
+#hint.on{opacity:1;pointer-events:auto}
+#hint b{font-weight:600;color:var(--ink)}
+
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:7;max-height:80vh;overflow:auto;background:var(--panel);border-top:1px solid var(--chip-line);border-radius:14px 14px 0 0;
+  padding:1rem 1.1rem calc(1.2rem + env(safe-area-inset-bottom,0px));-webkit-user-select:text;user-select:text}
+.sheet h2{font-size:1.5rem;font-weight:500;margin:0 2rem .2rem 0}
+.sheet .lede{color:var(--ink-soft);margin:0 0 .8rem;font-size:1rem}
+.sheet .x{position:absolute;right:.7rem;top:.6rem;border:0;background:none;font-size:1.6rem;line-height:1;padding:.2rem .5rem;color:var(--ink-soft)}
+.group{margin:.9rem 0 0}
+.group .name{font-weight:600;font-size:1.05rem}
+.seg{display:flex;flex-wrap:wrap;gap:.35rem;margin:.3rem 0 .25rem}
+.opt{border:1px solid var(--chip-line);background:transparent;border-radius:999px;padding:.3rem .8rem;font-size:1rem}
+.opt[aria-checked="true"]{background:var(--seal);border-color:var(--seal);color:var(--seal-ink)}
+.blurb{color:var(--ink-soft);font-size:.95rem;margin:0}
+.presets{display:flex;gap:.5rem;margin:.4rem 0 .2rem}
+.btn{border:1px solid var(--chip-line);background:transparent;border-radius:3px;padding:.4rem .9rem;font-size:1rem}
+.btn.primary{background:var(--seal);border-color:var(--seal);color:var(--seal-ink);font-weight:600}
+.sessions{list-style:none;padding:0;margin:.4rem 0}
+.sessions li{display:flex;gap:.5rem;align-items:center;justify-content:space-between;border-top:1px solid var(--chip-line);padding:.45rem 0;flex-wrap:wrap}
+.sessions .meta{color:var(--ink-soft);font-size:.95rem}
+.file{display:inline-block;position:relative}
+.file input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
+.modal{position:fixed;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;background:var(--veil);padding:1.2rem;-webkit-user-select:text;user-select:text}
+.modal .card{background:var(--panel);border:1px solid var(--chip-line);border-radius:12px;padding:1.2rem;max-width:26rem;width:100%;max-height:88vh;overflow:auto}
+.modal h2{margin:0 0 .5rem;font-weight:500;font-size:1.5rem}
+.stats{display:grid;grid-template-columns:1fr auto;gap:.15rem 1rem;margin:.4rem 0 1rem;font-size:1rem}
+.stats dt{color:var(--ink-soft)} .stats dd{margin:0;text-align:right}
+#replayBar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(1rem + env(safe-area-inset-bottom,0px));z-index:6;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;justify-content:center;width:max-content;max-width:94vw}
+@media (prefers-reduced-motion:reduce){#intro,.hud,#hint,#pass.busy{transition:none;animation:none}}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Rice-paper canvas: press and hold to pour ink, tilt to let it run"></canvas>
+
+<div id="intro" role="dialog" aria-labelledby="t">
+  <div class="intro-inner">
+    <h1 class="title" id="t">Splashed<br>Ink</h1>
+    <div class="notes">
+      <p>Press and hold the paper to pour.</p>
+      <p>Tilt your phone, and wet ink runs with it.</p>
+      <p>The more you pour, the paler the ink. Pause, and it darkens again.</p>
+      <p>The paper dries. What falls cannot be taken back.</p>
+      <p>When you are ready, pass the paper. Your partner answers only in ink.</p>
+      <p>The Friction button turns each of these resistances up or down.</p>
+    </div>
+    <p class="fine" id="privacy">Your strokes are recorded in this browser so you can replay them. Nothing leaves your device unless you export it, or pass the paper to a partner that runs elsewhere.</p>
+    <button id="start" type="button">Lay the paper</button>
+  </div>
+</div>
+<div id="err" role="alert"></div>
+
+<div class="hud" id="hudTL">
+  <div class="row">
+    <button class="chip" id="fricBtn" type="button">Friction</button>
+    <button class="chip" id="sessBtn" type="button"><span class="recdot" id="recdot"></span>Session</button>
+  </div>
+  <button class="chip" id="newSheet" type="button" aria-label="Press and hold for a new sheet">Hold for new sheet<span class="fill" id="fill"></span></button>
+</div>
+<div class="hud" id="hudL">
+  <button id="pot" type="button" aria-label="Ink pot" disabled></button>
+  <div id="potLabel"><span id="tone">Scorched ink</span><br><span style="font-style:italic" id="potHint">pause to regrind</span></div>
+</div>
+<div class="hud" id="hudR">
+  <input id="words" type="text" maxlength="140" placeholder="A few words for your partner" aria-label="A few words for your partner" hidden>
+  <button class="chip" id="again" type="button" hidden>Ask again</button>
+  <button class="chip" id="undo" type="button" hidden>Undo</button>
+  <select id="partnerSel" class="chip" aria-label="Partner" hidden></select>
+  <button class="chip" id="pass" type="button" hidden>Pass the paper</button>
+</div>
+<div class="hud" id="hudT">
+  <button class="chip" id="level" type="button" aria-label="Drag to tilt the paper; tap to set the current angle as level"><span id="bubble"></span></button>
+</div>
+<div id="hint" class="chip" role="status"></div>
+
+<section class="sheet" id="fricPanel" role="dialog" aria-labelledby="fricTitle" hidden>
+  <button class="x" type="button" data-close aria-label="Close">&times;</button>
+  <h2 id="fricTitle">Friction</h2>
+  <p class="lede">Each setting adds or removes one kind of resistance between you, the paper and your partner. Seamful is the piece as it was designed. Seamless is the familiar frictionless tool.</p>
+  <div class="presets"><button class="btn" id="presetSeamful" type="button">Seamful</button><button class="btn" id="presetSeamless" type="button">Seamless</button></div>
+  <div id="groups"></div>
+</section>
+
+<section class="sheet" id="sessPanel" role="dialog" aria-labelledby="sessTitle" hidden>
+  <button class="x" type="button" data-close aria-label="Close">&times;</button>
+  <h2 id="sessTitle">Session</h2>
+  <p class="lede" id="sessLede"></p>
+  <div class="row">
+    <button class="btn primary" id="sessEnd" type="button">End and save</button>
+    <button class="btn" id="sessExport" type="button">Export this session</button>
+    <button class="btn" id="sessKeep" type="button" role="switch" aria-checked="true">Keep a record on this device</button>
+  </div>
+  <h3 style="font-weight:500;margin:1rem 0 0">Saved sessions</h3>
+  <ul class="sessions" id="sessList"></ul>
+  <div class="row"><span class="file btn">Import a session<input id="sessImport" type="file" accept="application/json,.json"></span></div>
+  <p class="blurb" style="margin-top:.8rem">Records stay in this browser unless you export them. When you pass the paper, a picture of it and the details you allow are sent to your partner.</p>
+</section>
+
+<div class="modal" id="summary" role="dialog" aria-labelledby="sumTitle" hidden>
+  <div class="card">
+    <h2 id="sumTitle">Session saved</h2>
+    <dl class="stats" id="sumStats"></dl>
+    <div class="row"><button class="btn primary" id="sumReplay" type="button">Replay it</button><button class="btn" id="sumExport" type="button">Export</button><button class="btn" id="sumClose" type="button">New sheet</button></div>
+  </div>
+</div>
+
+<div id="replayBar" hidden>
+  <span class="chip" id="replayInfo">Replay</span>
+  <button class="chip" data-speed="1" type="button">1x</button><button class="chip" data-speed="4" type="button">4x</button><button class="chip" data-speed="16" type="button">16x</button>
+  <button class="chip" id="replayStop" type="button">Stop</button>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const cv = $('c'), errEl = $('err');
+const gl = cv.getContext('webgl2', {antialias:false, alpha:false, preserveDrawingBuffer:true});
+if (!gl) { errEl.textContent = 'This browser does not support WebGL2. Try a recent version of Safari or Chrome.'; return; }
+const hasF32 = !!gl.getExtension('EXT_color_buffer_float'), hasF16 = !!gl.getExtension('EXT_color_buffer_half_float');
+const P = new URLSearchParams(location.search);
+
+// ================= constants =================
+const APP_VERSION = '0.3.0';
+const TICK = 1/60, STEPS = 6, POUR = 0.06, MAXB = 4, SIM_MAXPX = 260000, MAX_UNDO = 12;
+const DRYK = {slow:0.35, normal:1, fast:4, instant:400};
+const INKP = {scarce:[0.18,0.012], normal:[0.09,0.025]};   // [depletion per second while pouring, recovery per second while resting]
+const TONES = [[0.82,'Scorched ink'],[0.6,'Thick ink'],[0.38,'Heavy ink'],[0.16,'Light ink'],[-1,'Clear water']];
+const TONE_CYCLE = [1,0.7,0.45,0.2,0];
+
+// ================= friction settings =================
+const DEFAULTS = {undo:'none', drying:'normal', ink:'normal', words:'off', sees:'paper', redo:'final'};
+const SEAMLESS = {undo:'unlimited', drying:'instant', ink:'unlimited', words:'on', sees:'paper+strokes', redo:'redo'};
+const KNOBS = {
+  undo:  {label:'Undo', opts:[['none','None'],['one','One step'],['unlimited','Unlimited']],
+          blurb:{none:'Nothing can be taken back.', one:'You can take back your last stroke.', unlimited:'You can take back every stroke, one after another.'}},
+  drying:{label:'Paper drying', opts:[['slow','Slow'],['normal','Normal'],['fast','Fast'],['instant','Instant']],
+          blurb:{slow:'Ink keeps running and blooming for a long time.', normal:'The paper dries at its own pace.', fast:'Ink stops moving quickly.', instant:'Ink stays exactly where it lands.'}},
+  ink:   {label:'Ink supply', opts:[['scarce','Scarce'],['normal','Normal'],['unlimited','Unlimited']],
+          blurb:{scarce:'The pot empties fast and refills slowly.', normal:'The more you pour, the paler it gets. Pause to darken it again.', unlimited:'The pot never empties. Tap it to choose a tone.'}},
+  words: {label:'Talking to your partner', opts:[['off','Ink only'],['on','Words allowed']],
+          blurb:{off:'You can only answer your partner in paint.', on:'You can write your partner a few words before passing the paper.'}},
+  sees:  {label:'What your partner sees', opts:[['paper','The paper'],['paper+strokes','Paper and strokes']],
+          blurb:{paper:'Your partner sees only the paper, like a painter arriving at a finished sheet.', 'paper+strokes':'Your partner also sees how you drew: order, timing and pauses.'}},
+  redo:  {label:"Your partner's turn", opts:[['final','Final'],['redo','Can be redone']],
+          blurb:{final:"Your partner's turn happens once and stays.", redo:'You can ask your partner to try again.'}}
+};
+function sanitizeSettings(o){ const s = {...DEFAULTS}; for (const k of Object.keys(KNOBS)) if (o && KNOBS[k].opts.some(x=>x[0]===o[k])) s[k]=o[k]; return s; }
+function settingsFromUrl(){
+  let s = {...DEFAULTS};
+  if (P.get('preset')==='seamless') s = {...SEAMLESS};
+  for (const k of Object.keys(KNOBS)) if (P.has(k)) s[k] = P.get(k);
+  return sanitizeSettings(s);
+}
+const LOCKED = P.get('lock')==='1';
+let keepRecord = P.get('record')!=='0';
+
+// ================= shaders =================
+const VS = `#version 300 es
+in vec2 a; out vec2 vUv; void main(){ vUv=a*0.5+0.5; gl_Position=vec4(a,0.,1.); }`;
+const SIM = `#version 300 es
+precision highp float; precision highp int;
+uniform sampler2D uS; uniform sampler2D uP;
+uniform vec2 uG; uniform vec4 uB[${MAXB}]; uniform int uN; uniform float uR; uniform float uDryK;
+out vec4 o;
+const float K=0.9; const float G=1.2;
+float sm(float a,float b,float x){ return smoothstep(a,b,x); }
+void main(){
+  ivec2 R=textureSize(uS,0); ivec2 p=ivec2(gl_FragCoord.xy);
+  vec4 c=texelFetch(uS,p,0); vec4 pc=texelFetch(uP,p,0);
+  float F=pc.r, PM=pc.g*1.5; float w=c.r, ink=c.g, dep=c.b, m=c.a;
+  float P=PM*(0.4+0.6*m); float conc=w>1e-4?ink/w:0.;
+  float mob=w*sm(0.,0.12,w), mg=w*sm(0.1,0.9,w);
+  float nw=0., ni=0.; float wn4[4];
+  ivec2 D[4]=ivec2[4](ivec2(1,0),ivec2(-1,0),ivec2(0,1),ivec2(0,-1));
+  for(int k=0;k<4;k++){
+    ivec2 q=p+D[k];
+    if(q.x<0||q.y<0||q.x>=R.x||q.y>=R.y){ wn4[k]=w; continue; }
+    vec4 n=texelFetch(uS,q,0); float Pn=texelFetch(uP,q,0).g*1.5*(0.4+0.6*n.a);
+    float wn=n.r; wn4[k]=wn; float Pf=0.5*(P+Pn);
+    float gt=-G*dot(uG,vec2(D[k]));
+    float mobn=wn*sm(0.,0.12,wn), mgn=wn*sm(0.1,0.9,wn);
+    float up=gt>0.?mgn:mg;
+    float fl=K*Pf*((wn-w)*0.5*(mob+mobn)+gt*up*clamp(Pf*1.25,0.2,1.6));
+    fl=clamp(fl,-0.2*w,0.2*wn);
+    float concn=wn>1e-4?n.g/wn:0.; float cu=fl>0.?concn:conc;
+    nw+=fl; ni+=fl*cu;
+  }
+  w+=nw; ink=max(ink+ni,0.);
+  for(int i=0;i<${MAXB};i++){
+    if(i>=uN) break;
+    vec4 b=uB[i]; float r=distance(vec2(p)+0.5,b.xy);
+    float fo=pow(clamp(1.-r/uR,0.,1.),1.5)*(0.6+0.4*F);
+    w+=b.z*fo; ink+=b.z*fo*b.w;
+  }
+  float ab=min(0.003*F*w*(1.-m)*min(uDryK,8.),w); float c2=w>1e-4?ink/w:0.;
+  w-=ab; m=min(m+ab*2.,1.); float cap=min(ab*min(c2,3.)*0.5,ink); dep+=cap; ink-=cap;
+  float grad=length(vec2(wn4[0]-wn4[1],wn4[2]-wn4[3]));
+  float rate=0.0006+0.02*(1.-sm(0.,0.08,w))+0.03*clamp(grad*3.,0.,1.)*(1.-sm(0.,0.25,w));
+  float dd=ink*clamp(rate,0.,1.)*(0.7+0.6*F); dep+=dd; ink-=dd;
+  w=max(w-0.00016*uDryK,0.); m=max(m-0.00015*uDryK,0.);
+  if(w<min(0.002*uDryK,0.9)){ dep+=ink; ink=0.; w=0.; }
+  w=min(w,4.);
+  o=vec4(w,ink,dep,m);
+}`;
+const SHOW = `#version 300 es
+precision highp float; in vec2 vUv; uniform sampler2D uS; uniform sampler2D uFib; out vec4 o;
+vec4 tf(ivec2 i, ivec2 R){ return texelFetch(uS, clamp(i, ivec2(0), R-1), 0); }
+vec4 bil(vec2 uv){ ivec2 R=textureSize(uS,0); vec2 x=uv*vec2(R)-0.5; ivec2 i=ivec2(floor(x)); vec2 f=fract(x);
+  return mix(mix(tf(i,R),tf(i+ivec2(1,0),R),f.x), mix(tf(i+ivec2(0,1),R),tf(i+ivec2(1,1),R),f.x), f.y); }
+void main(){
+  vec4 s=bil(vUv); float fib=texture(uFib,vUv).r;
+  vec3 paper=mix(vec3(0.900,0.876,0.823),vec3(0.958,0.942,0.906),fib); paper*=1.0-0.07*s.a;
+  float v=1.0-exp(-(s.b*1.05+s.g*0.75)); v=clamp(v*(0.85+0.25*fib),0.,1.);
+  o=vec4(mix(paper,vec3(0.106,0.114,0.133),v),1.);
+}`;
+const COPY = `#version 300 es
+precision highp float; uniform sampler2D uS; out vec4 o;
+void main(){ o=texelFetch(uS,ivec2(gl_FragCoord.xy),0); }`;
+const DENS = `#version 300 es
+precision highp float; uniform sampler2D uS; out vec4 o;
+void main(){ vec4 s=texelFetch(uS,ivec2(gl_FragCoord.xy),0); o=vec4(clamp(1.0-exp(-(s.b*1.05+s.g*0.75)),0.,1.),0.,0.,1.); }`;
+function sh(t,src){ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+function prog(fs){ const p=gl.createProgram(); gl.attachShader(p,sh(gl.VERTEX_SHADER,VS)); gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs)); gl.bindAttribLocation(p,0,'a'); gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u={}, n=gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS); for(let i=0;i<n;i++){ const info=gl.getActiveUniform(p,i); u[info.name.replace(/\[0\]$/,'')]=gl.getUniformLocation(p,info.name); } return {p,u}; }
+let simP, showP, copyP, densP;
+try { simP=prog(SIM); showP=prog(SHOW); copyP=prog(COPY); densP=prog(DENS); }
+catch(e){ errEl.textContent='The ink simulation could not start on this device.'; console.error(e); return; }
+gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+
+// ================= simulation resources =================
+let simW=0, simH=0, texA, texB, fbA, fbB, paperTex, fibTex, dTex=null, dFb=null, fmt=null;
+function makeStateTex(){ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,fmt[0],simW,simH,0,gl.RGBA,fmt[1],null); return t; }
+function makeFB(t){ const f=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,f); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0); return f; }
+function pickFormat(){
+  for (const f of [[gl.RGBA32F,gl.FLOAT,hasF32],[gl.RGBA16F,gl.HALF_FLOAT,hasF32||hasF16]]){
+    if(!f[2]) continue; fmt=[f[0],f[1]]; const t=makeStateTex(), b=makeFB(t);
+    const ok=gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE; gl.deleteFramebuffer(b); gl.deleteTexture(t); if(ok) return; }
+  fmt=null; throw new Error('nofloat'); }
+function rng32(seed){ let s=seed>>>0; return ()=>{ s=(s+0x6D2B79F5)>>>0; let t=s; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; }; }
+function makePaper(seed){
+  const R=rng32(seed), HW=simW*2, HH=simH*2;
+  const hc=document.createElement('canvas'); hc.width=HW; hc.height=HH; const x=hc.getContext('2d');
+  x.fillStyle='rgb(128,128,128)'; x.fillRect(0,0,HW,HH);
+  const n=Math.floor(simW*simH*0.35);
+  for(const col of ['#fff','#000']){ x.strokeStyle=col; x.globalAlpha=0.28; x.lineWidth=1; x.beginPath();
+    for(let i=0;i<n/2;i++){ let px=R()*HW, py=R()*HH, a=R()*Math.PI*2; const L=6+R()*34; x.moveTo(px,py);
+      for(let k=0;k<4;k++){ a+=(R()-0.5)*0.5; px+=Math.cos(a)*L/4; py+=Math.sin(a)*L/4; x.lineTo(px,py); } }
+    x.stroke(); }
+  x.globalAlpha=1;
+  const hd=x.getImageData(0,0,HW,HH).data; let mn=255,mx=0; for(let i=0;i<hd.length;i+=4){ if(hd[i]<mn)mn=hd[i]; if(hd[i]>mx)mx=hd[i]; }
+  const hi=new Uint8Array(HW*HH); for(let i=0,j=0;i<hd.length;i+=4,j++) hi[j]=Math.round((hd[i]-mn)/(mx-mn||1)*255);
+  const sc=document.createElement('canvas'); sc.width=simW; sc.height=simH; const sx=sc.getContext('2d'); sx.imageSmoothingQuality='high'; sx.drawImage(hc,0,0,simW,simH);
+  const sd=sx.getImageData(0,0,simW,simH).data; mn=255; mx=0; for(let i=0;i<sd.length;i+=4){ if(sd[i]<mn)mn=sd[i]; if(sd[i]>mx)mx=sd[i]; }
+  function low(cell){ const gw=Math.max(2,Math.ceil(simW/cell)+1), gh=Math.max(2,Math.ceil(simH/cell)+1);
+    const nc=document.createElement('canvas'); nc.width=gw; nc.height=gh; const nx=nc.getContext('2d'); const id=nx.createImageData(gw,gh);
+    for(let i=0;i<gw*gh;i++){ const v=R()*255; id.data[i*4]=v; id.data[i*4+1]=v; id.data[i*4+2]=v; id.data[i*4+3]=255; } nx.putImageData(id,0,0);
+    const oc=document.createElement('canvas'); oc.width=simW; oc.height=simH; const ox=oc.getContext('2d'); ox.imageSmoothingQuality='high'; ox.drawImage(nc,0,0,simW,simH);
+    return ox.getImageData(0,0,simW,simH).data; }
+  const n1=low(12), n2=low(4), arr=new Uint8Array(simW*simH*4);
+  for(let i=0;i<sd.length;i+=4){ const Fn=(sd[i]-mn)/(mx-mn||1), F=0.35+0.65*Fn, LF=(0.6*n1[i]+0.4*n2[i])/255;
+    let PM=0.08+1.3*LF*LF+0.9*Math.max(0,Math.min(1,Fn-0.55))*2; PM=Math.min(1.5,Math.max(0.05,PM));
+    arr[i]=Math.round(F*255); arr[i+1]=Math.round(PM/1.5*255); arr[i+3]=255; }
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+  if(paperTex) gl.deleteTexture(paperTex); if(fibTex) gl.deleteTexture(fibTex);
+  const mk=(filter)=>{ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); return t; };
+  paperTex=mk(gl.NEAREST); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,simW,simH,0,gl.RGBA,gl.UNSIGNED_BYTE,arr);
+  fibTex=mk(gl.LINEAR); gl.texImage2D(gl.TEXTURE_2D,0,gl.R8,HW,HH,0,gl.RED,gl.UNSIGNED_BYTE,hi);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+}
+function clearState(){ for(const f of [fbA,fbB]){ gl.bindFramebuffer(gl.FRAMEBUFFER,f); gl.viewport(0,0,simW,simH); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT); } }
+function defaultSimSize(){ let w=Math.round(innerWidth/1.6), h=Math.round(innerHeight/1.6); if(w*h>SIM_MAXPX){ const k=Math.sqrt(SIM_MAXPX/(w*h)); w=Math.round(w*k); h=Math.round(h*k); } return [Math.max(16,w),Math.max(16,h)]; }
+function freeSim(){ for(const t of [texA,texB,paperTex,fibTex,dTex]) if(t) gl.deleteTexture(t); for(const f of [fbA,fbB,dFb]) if(f) gl.deleteFramebuffer(f); dTex=dFb=null; freeSnaps(); }
+function initSim(w,h,paperSeed){ if(texA) freeSim(); simW=w; simH=h; if(!fmt) pickFormat();
+  texA=makeStateTex(); texB=makeStateTex(); fbA=makeFB(texA); fbB=makeFB(texB); clearState(); makePaper(paperSeed); }
+function resizeCanvas(){ const dpr=Math.min(devicePixelRatio||1,2); cv.width=Math.round(innerWidth*dpr); cv.height=Math.round(innerHeight*dpr); }
+function copyInto(srcTex,dstFb){ gl.useProgram(copyP.p); gl.viewport(0,0,simW,simH); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,srcTex); gl.uniform1i(copyP.u.uS,0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,dstFb); gl.drawArrays(gl.TRIANGLE_STRIP,0,4); }
+function render(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.viewport(0,0,cv.width,cv.height); gl.useProgram(showP.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,texA); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,fibTex);
+  gl.uniform1i(showP.u.uS,0); gl.uniform1i(showP.u.uFib,1); gl.drawArrays(gl.TRIANGLE_STRIP,0,4); }
+function density(){
+  if(!dTex){ dTex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,dTex); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,simW,simH,0,gl.RGBA,gl.UNSIGNED_BYTE,null); dFb=makeFB(dTex); }
+  gl.useProgram(densP.p); gl.viewport(0,0,simW,simH); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,texA); gl.uniform1i(densP.u.uS,0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,dFb); gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  const px=new Uint8Array(simW*simH*4); gl.readPixels(0,0,simW,simH,gl.RGBA,gl.UNSIGNED_BYTE,px);
+  const out=new Array(simW*simH); for(let i=0;i<out.length;i++) out[i]=px[i*4]; return out; }
+
+// ================= engine: everything that advances the paper =================
+// The engine is deterministic: given the same session header and the same events at the same ticks, it paints the same picture.
+const r3=v=>Math.round(v*1000)/1000, r4=v=>Math.round(v*10000)/10000;
+const clampN=(v,a,b)=>Math.max(a,Math.min(b,Number.isFinite(+v)?+v:a));
+const E = {tick:0, rng:rng32(1), pointers:new Map(), userG:{x:0,y:0}, g:{x:0,y:0}, gv:{x:0,y:0}, gf:{x:0,y:0},
+  C:1, Cai:1, aiTurn:false, aiTilt:null, actor:null, steps:STEPS, settings:{...DEFAULTS}, onPartnerDone:null};
+const bArr=new Float32Array(MAXB*4);
+function resetEngine(seed,settings){ E.tick=0; E.rng=rng32(seed); E.pointers.clear(); E.userG={x:0,y:0}; E.g={x:0,y:0}; E.gv={x:0,y:0}; E.gf={x:0,y:0};
+  E.C=1; E.Cai=1; E.aiTurn=false; E.aiTilt=null; E.actor=null; E.steps=STEPS; E.settings={...settings}; E.onPartnerDone=null; }
+
+// ---- snapshots (undo and "ask again") ----
+let snapStack=[], snapPool=[], preAI=null;
+function newSnap(){ const t=makeStateTex(); return {tex:t, fb:makeFB(t), C:1, Cai:1}; }
+function dropSnap(s){ gl.deleteTexture(s.tex); gl.deleteFramebuffer(s.fb); }
+function freeSnaps(){ for(const s of snapStack.concat(snapPool)) dropSnap(s); if(preAI) dropSnap(preAI); snapStack=[]; snapPool=[]; preAI=null; }
+function clearSnaps(){ snapPool.push(...snapStack); snapStack=[]; preAI=preAI; }
+function trimSnaps(){ const cap=E.settings.undo==='none'?0:(E.settings.undo==='one'?1:MAX_UNDO); while(snapStack.length>cap) snapPool.push(snapStack.shift()); }
+function takeSnapshot(){
+  const mode=E.settings.undo; if(mode==='none') return; const cap=mode==='one'?1:MAX_UNDO;
+  const s=snapStack.length>=cap?snapStack.shift():(snapPool.pop()||newSnap());
+  copyInto(texA,s.fb); s.C=E.C; snapStack.push(s); }
+function doUndo(){ const s=snapStack.pop(); if(!s) return false;
+  copyInto(s.tex,fbB); [texA,texB]=[texB,texA]; [fbA,fbB]=[fbB,fbA]; E.C=s.C; snapPool.push(s); return true; }
+function savePreAI(){ if(!preAI) preAI=newSnap(); copyInto(texA,preAI.fb); preAI.C=E.C; preAI.Cai=E.Cai; }
+function restorePreAI(){ if(!preAI) return; copyInto(preAI.tex,fbB); [texA,texB]=[texB,texA]; [fbA,fbB]=[fbB,fbA]; E.C=preAI.C; E.Cai=preAI.Cai; }
+const userCount=()=>{ let n=0; for(const q of E.pointers.values()) if(!q.ai) n++; return n; };
+
+// ---- the partner's hands: gestures become pointer positions, tick by tick ----
+function startActor(gestures){ E.actor={g:gestures, i:0, t:0, len:0, phase:'run', init:false, gap:0, gapInit:false}; }
+function finishActor(){ E.pointers.delete('ai'); E.aiTilt=null; E.actor=null; E.aiTurn=false;
+  if(E.onPartnerDone){ const f=E.onPartnerDone; E.onPartnerDone=null; f(); } }
+function actorStep(){
+  const a=E.actor; if(!a) return;
+  const gst=a.g[a.i]; if(!gst){ finishActor(); return; }
+  if(a.phase==='run'){
+    if(!a.init){ a.init=true; a.t=0; a.len=Math.max(1,Math.round((gst.seconds||1)*60)); a.gapInit=false;
+      if(gst.type==='pour'&&E.settings.ink==='unlimited'&&typeof gst.ink==='number') E.Cai=clampN(gst.ink,0,1); }
+    if(gst.type==='pour'){
+      const pts=[[gst.x,gst.y],...(gst.path||[])], k=a.len>1?a.t/(a.len-1):0, f=k*(pts.length-1), i=Math.min(pts.length-2,Math.floor(f)), u=pts.length>1?f-i:0;
+      const A=pts[Math.max(0,i)], B=pts[Math.min(pts.length-1,i+1)];
+      const x=r4(A[0]+(B[0]-A[0])*u), y=r4(A[1]+(B[1]-A[1])*u); let q=E.pointers.get('ai');
+      if(!q){ q={x,y,p:0.5,ai:true}; E.pointers.set('ai',q); } q.x=x; q.y=y;
+    } else if(gst.type==='tilt'){ const m=Math.hypot(gst.dx,gst.dy)||1, mag=Math.min(1,m)*0.8; E.aiTilt={x:gst.dx/m*mag,y:gst.dy/m*mag}; }
+    a.t++;
+    if(a.t>=a.len){ a.phase='gap'; a.t=0; a.gap=gst.type==='pour'?15:(gst.type==='tilt'?24:0); a.gapInit=false; }
+  } else {
+    if(!a.gapInit){ a.gapInit=true; E.pointers.delete('ai'); E.aiTilt=null; }
+    a.t++; if(a.t>=a.gap){ a.i++; a.phase='run'; a.init=false; }
+  }
+}
+
+function engineTick(){
+  actorStep();
+  const gT=E.aiTurn?(E.aiTilt||{x:0,y:0}):E.userG;                           // while the partner holds the paper, only the partner tilts it
+  E.gv.x+=((gT.x-E.g.x)*14-E.gv.x*6.5)*TICK; E.gv.y+=((gT.y-E.g.y)*14-E.gv.y*6.5)*TICK;
+  E.g.x+=E.gv.x*TICK; E.g.y+=E.gv.y*TICK;
+  const fs=1-Math.exp(-TICK/0.45); E.gf.x+=(E.g.x-E.gf.x)*fs; E.gf.y+=(E.g.y-E.gf.y)*fs;
+  const ink=E.settings.ink;
+  if(ink!=='unlimited'){ const [dep,rec]=INKP[ink], n=userCount();
+    E.C=n?Math.max(0,E.C-dep*TICK*Math.sqrt(n)):Math.min(1,E.C+rec*TICK);
+    E.Cai=E.pointers.has('ai')?Math.max(0,E.Cai-dep*TICK):Math.min(1,E.Cai+rec*TICK); }
+  gl.useProgram(simP.p); gl.viewport(0,0,simW,simH);
+  gl.uniform2f(simP.u.uG,E.gf.x,-E.gf.y); gl.uniform1f(simP.u.uR,12*Math.max(0.8,Math.min(1.6,Math.min(simW,simH)/240)));
+  gl.uniform1f(simP.u.uDryK,DRYK[E.settings.drying]); gl.uniform1i(simP.u.uS,0); gl.uniform1i(simP.u.uP,1);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,paperTex);
+  const plist=[...E.pointers.values()].slice(0,MAXB), rJ=4*Math.min(simW,simH)/240, rs=E.rng;
+  for(let k=0;k<E.steps;k++){
+    bArr.fill(0);
+    plist.forEach((q,i)=>{ const gx=(rs()+rs()+rs()-1.5)*rJ, gy=(rs()+rs()+rs()-1.5)*rJ;
+      bArr[i*4]=q.x*simW+gx; bArr[i*4+1]=(1-q.y)*simH+gy; bArr[i*4+2]=POUR*(0.75+0.5*Math.min(1,q.p))*(STEPS/E.steps); bArr[i*4+3]=q.ai?E.Cai:E.C; });
+    gl.uniform4fv(simP.u.uB,bArr); gl.uniform1i(simP.u.uN,plist.length);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,texA); gl.bindFramebuffer(gl.FRAMEBUFFER,fbB); gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    [texA,texB]=[texB,texA]; [fbA,fbB]=[fbB,fbA]; }
+  E.tick++;
+}
+
+// ---- events: the only way anything changes ----
+function newSheet(seed){ clearState(); makePaper(seed); E.C=1; E.Cai=1; snapPool.push(...snapStack); snapStack=[]; E.pointers.clear(); }
+function applyEvent(ev){
+  switch(ev.e){
+    case 'pd': if(userCount()===0) takeSnapshot(); E.pointers.set(ev.i,{x:ev.x,y:ev.y,p:ev.p,ai:false}); break;
+    case 'pm': { const q=E.pointers.get(ev.i); if(q){ q.x=ev.x; q.y=ev.y; q.p=ev.p; } break; }
+    case 'pu': E.pointers.delete(ev.i); break;
+    case 'g': E.userG={x:ev.x,y:ev.y}; break;
+    case 'k': E.settings[ev.k]=ev.v; if(ev.k==='undo') trimSnaps(); break;
+    case 'st': E.steps=ev.n; break;
+    case 'sh': newSheet(ev.s); break;
+    case 'un': doUndo(); break;
+    case 'pot': E.C=ev.c; break;
+    case 'pa': E.aiTurn=true; for(const k of [...E.pointers.keys()]) if(k!=='ai') E.pointers.delete(k); savePreAI(); takeSnapshot(); break;
+    case 'pg': startActor(ev.gestures); break;
+    case 'pe': E.aiTurn=false; break;
+    case 'rd': restorePreAI(); break;
+    default: break;                                                            // 'pr' and 'note' are records only
+  } }
+
+// ================= session recording =================
+let session=null, mode='boot', running=false;
+function userEventsSince(tick){ const ev=session?session.events:[]; const out=[], open=new Map();
+  for(const e of ev){ if(e.e==='pd'){ open.set(e.i,{t0:e.t,pts:[[e.x,e.y]]}); }
+    else if(e.e==='pm'&&open.has(e.i)){ open.get(e.i).pts.push([e.x,e.y]); }
+    else if(e.e==='pu'&&open.has(e.i)){ const s=open.get(e.i); open.delete(e.i); s.t1=e.t; if(s.t0>=tick) out.push(s); } }
+  return out; }
+function simplify(pts,n){ if(pts.length<=n) return pts.map(p=>[r3(p[0]),r3(p[1])]); const o=[]; for(let i=0;i<n;i++){ const p=pts[Math.round(i*(pts.length-1)/(n-1))]; o.push([r3(p[0]),r3(p[1])]); } return o; }
+function strokesSummary(sinceTick){ const st=userEventsSince(sinceTick).slice(-12); let prevEnd=null; const ar=innerWidth/innerHeight;
+  return st.map(s=>{ let len=0; for(let i=1;i<s.pts.length;i++) len+=Math.hypot((s.pts[i][0]-s.pts[i-1][0])*ar,s.pts[i][1]-s.pts[i-1][1]);
+    const o={start:r3(s.t0/60),seconds:r3((s.t1-s.t0)/60),pause:prevEnd===null?null:r3((s.t0-prevEnd)/60),length:r3(len),path:simplify(s.pts,8)}; prevEnd=s.t1; return o; }); }
+function computeSummary(s){
+  const ar=s.device.viewport[0]/s.device.viewport[1]; const strokes=[], open=new Map(); let undo=0,redo=0,sheets=0,knobs=0,turns=0,errs=0,words=0,pSec=0,first=null;
+  for(const e of s.events){
+    if(e.e==='pd'){ open.set(e.i,{t0:e.t,len:0,last:[e.x,e.y]}); if(first===null) first=e.t; }
+    else if(e.e==='pm'&&open.has(e.i)){ const o=open.get(e.i); o.len+=Math.hypot((e.x-o.last[0])*ar,e.y-o.last[1]); o.last=[e.x,e.y]; }
+    else if(e.e==='pu'&&open.has(e.i)){ const o=open.get(e.i); open.delete(e.i); strokes.push({t0:o.t0,t1:e.t,len:o.len}); }
+    else if(e.e==='un') undo++; else if(e.e==='rd') redo++; else if(e.e==='sh') sheets++; else if(e.e==='k') knobs++;
+    else if(e.e==='pg'){ turns++; for(const g of e.gestures) pSec+=g.seconds||0; } else if(e.e==='pe') errs++;
+    else if(e.e==='pa'&&e.words) words++; }
+  const pauses=[]; for(let i=1;i<strokes.length;i++) pauses.push((strokes[i].t0-strokes[i-1].t1)/60); pauses.sort((a,b)=>a-b);
+  const pourSec=strokes.reduce((a,b)=>a+(b.t1-b.t0)/60,0), pathLen=strokes.reduce((a,b)=>a+b.len,0);
+  return {seconds:r3(s.endTick/60), strokes:strokes.length, pourSeconds:r3(pourSec), pathLength:r3(pathLen), firstStrokeAfterSeconds:first===null?null:r3(first/60),
+    medianPauseSeconds:pauses.length?r3(pauses[pauses.length>>1]):null, longestPauseSeconds:pauses.length?r3(pauses[pauses.length-1]):null,
+    undos:undo, partnerTurns:turns, partnerRedos:redo, partnerErrors:errs, partnerGestureSeconds:r3(pSec), wordsSent:words, newSheets:sheets, settingChanges:knobs}; }
+function emit(e,fields){ const ev={t:E.tick,e,...fields}; if(session) session.events.push(ev); applyEvent(ev); return ev; }
+function beginSession(){
+  const seed=(Math.random()*1e9)>>>0, paperSeed=(Math.random()*1e9)>>>0, [w,h]=defaultSimSize();
+  if(!texA||w!==simW||h!==simH) initSim(w,h,paperSeed); else { clearState(); makePaper(paperSeed); }
+  snapPool.push(...snapStack); snapStack=[]; resetEngine(seed,settingsFromUrl());
+  session={format:'splashed-ink-session/v1', id:'si-'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), app:{name:'splashed-ink',version:APP_VERSION},
+    startedAt:new Date().toISOString(), endedAt:null, tickRate:60, stepsPerTick:STEPS, seed, paperSeed,
+    device:{viewport:[innerWidth,innerHeight], dpr:r3(devicePixelRatio||1), sim:[simW,simH], touch:matchMedia('(pointer: coarse)').matches, tiltSensor:false, lockedSettings:LOCKED},
+    settings:{...E.settings}, endTick:0, summary:null, events:[]}; aiHistory.length=0; lastPartnerTick=0; againOK=false; }
+function finishSession(){ if(!session||session.endedAt) return session; session.endedAt=new Date().toISOString(); session.endTick=E.tick; session.device.tiltSensor=gotOri; session.summary=computeSummary(session); saveSession(); return session; }
+function serialize(s){ const {events,...head}=s; const h=JSON.stringify(head,null,1); return h.slice(0,h.length-2)+',\n "events":[\n'+events.map(e=>'  '+JSON.stringify(e)).join(',\n')+'\n ]\n}'; }
+
+// ---- storage ----
+const LS_IDX='splashed-ink:index', LS_PRE='splashed-ink:s:';
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); return true; }catch(e){ return false; } }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
+function readIndex(){ try{ return JSON.parse(lsGet(LS_IDX)||'[]'); }catch(e){ return []; } }
+function saveSession(s){ s=s||session; if(!s||!keepRecord) return false;
+  const idx=readIndex().filter(x=>x.id!==s.id); const summary=s.summary||computeSummaryLive(s);
+  idx.unshift({id:s.id,startedAt:s.startedAt,summary,ended:!!s.endedAt}); const data=serialize(s);
+  while(idx.length>12){ const o=idx.pop(); lsDel(LS_PRE+o.id); }
+  let ok=lsSet(LS_PRE+s.id,data); while(!ok&&idx.length>1){ const o=idx.pop(); lsDel(LS_PRE+o.id); ok=lsSet(LS_PRE+s.id,data); }
+  lsSet(LS_IDX,JSON.stringify(idx)); return ok; }
+function computeSummaryLive(s){ const keep=s.endTick; s.endTick=E.tick; const r=computeSummary(s); s.endTick=keep; return r; }
+function loadSaved(id){ try{ return JSON.parse(lsGet(LS_PRE+id)); }catch(e){ return null; } }
+function deleteSaved(id){ lsDel(LS_PRE+id); lsSet(LS_IDX,JSON.stringify(readIndex().filter(x=>x.id!==id))); }
+async function saveFile(name,text){
+  try{ if(window.claude&&window.claude.use){ const d=await window.claude.use('downloads'); if(d){ await d.save({filename:name,data:text}); return 'saved'; } } }catch(e){ if(e&&e.code==='declined') return 'declined'; }
+  try{ const b=new Blob([text],{type:'application/json'}), a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); return 'saved'; }catch(e){}
+  try{ await navigator.clipboard.writeText(text); return 'copied'; }catch(e){ return 'failed'; } }
+
+// ================= input =================
+const pending=new Map();
+const live=()=>mode==='live'&&running;
+const nx=x=>r4(Math.min(1,Math.max(0,x/innerWidth))), ny=y=>r4(Math.min(1,Math.max(0,y/innerHeight))), pr=e=>Math.round((e.pressure||0.5)*100)/100;
+let ui={modal:false};
+function flushPending(){ for(const [id,v] of pending){ const q=E.pointers.get(id); if(q&&(Math.abs(q.x-v.x)>0.0005||Math.abs(q.y-v.y)>0.0005||Math.abs(q.p-v.p)>0.02)) emit('pm',{i:id,x:v.x,y:v.y,p:v.p}); } pending.clear(); }
+cv.addEventListener('pointerdown',e=>{ if(!live()||E.aiTurn||ui.modal) return; cv.setPointerCapture(e.pointerId); flushPending();
+  emit('pd',{i:'u'+e.pointerId,x:nx(e.clientX),y:ny(e.clientY),p:pr(e)}); againOK=false; refreshHud(); e.preventDefault(); });
+cv.addEventListener('pointermove',e=>{ const id='u'+e.pointerId; if(E.pointers.has(id)) pending.set(id,{x:nx(e.clientX),y:ny(e.clientY),p:pr(e)}); });
+const pUp=e=>{ const id='u'+e.pointerId; if(!E.pointers.has(id)||!live()) return; flushPending(); emit('pu',{i:id}); refreshHud(); };
+cv.addEventListener('pointerup',pUp); cv.addEventListener('pointercancel',pUp); cv.addEventListener('lostpointercapture',pUp);
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+
+let permState=null, gotOri=false, lastOri=null, base=null, oriG={x:0,y:0}, stick=null;
+const keys=new Set();
+function screenAngle(){ return (screen.orientation&&screen.orientation.angle)||window.orientation||0; }
+addEventListener('deviceorientation',e=>{ if(e.beta==null||e.gamma==null) return; gotOri=true; lastOri={b:e.beta,g:e.gamma}; if(!base) base={b:e.beta,g:e.gamma};
+  const dz=v=>Math.abs(v)<3?0:v-Math.sign(v)*3, db=dz(e.beta-base.b), dg=dz(e.gamma-base.g);
+  const dx=Math.sin(dg*Math.PI/180), dy=Math.sin(db*Math.PI/180), a=-screenAngle()*Math.PI/180;
+  const rx=dx*Math.cos(a)-dy*Math.sin(a), ry=dx*Math.sin(a)+dy*Math.cos(a), cl=v=>Math.max(-0.8,Math.min(0.8,v*1.4)); oriG={x:cl(rx),y:cl(ry)}; });
+addEventListener('keydown',e=>{ if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d'].includes(e.key)&&!(e.target&&e.target.tagName==='INPUT')){ keys.add(e.key); e.preventDefault(); } });
+addEventListener('keyup',e=>keys.delete(e.key));
+function sourceG(){ if(stick&&stick.moved) return {x:stick.gx||0,y:stick.gy||0}; if(gotOri) return oriG;
+  let kx=0,ky=0; if(keys.has('ArrowLeft')||keys.has('a')) kx-=0.6; if(keys.has('ArrowRight')||keys.has('d')) kx+=0.6; if(keys.has('ArrowUp')||keys.has('w')) ky-=0.6; if(keys.has('ArrowDown')||keys.has('s')) ky+=0.6; return {x:kx,y:ky}; }
+function emitGravity(){ const s=sourceG(), x=r3(s.x), y=r3(s.y); if(Math.abs(x-E.userG.x)>0.004||Math.abs(y-E.userG.y)>0.004) emit('g',{x,y}); }
+const lv=$('level');
+lv.addEventListener('pointerdown',e=>{ e.preventDefault(); lv.setPointerCapture(e.pointerId); stick={x0:e.clientX,y0:e.clientY,moved:false}; lv.classList.add('drag'); });
+lv.addEventListener('pointermove',e=>{ if(!stick) return; const dx=e.clientX-stick.x0, dy=e.clientY-stick.y0, d=Math.hypot(dx,dy); if(d>6) stick.moved=true;
+  const mag=0.8*Math.pow(Math.min(1,d/70),1.6); stick.gx=d?dx/d*mag:0; stick.gy=d?dy/d*mag:0; });
+const stickEnd=()=>{ if(!stick) return; if(!stick.moved){ if(lastOri) base={b:lastOri.b,g:lastOri.g}; oriG={x:0,y:0}; showHint(lastOri?'The current angle is now level.':'Drag this dot to tilt the paper.',2500); } stick=null; lv.classList.remove('drag'); };
+lv.addEventListener('pointerup',stickEnd); lv.addEventListener('pointercancel',stickEnd); lv.addEventListener('lostpointercapture',stickEnd);
+
+const hintEl=$('hint'); let hintT=null;
+function showHint(html,ms){ hintEl.innerHTML=html; hintEl.classList.add('on'); clearTimeout(hintT); hintT=setTimeout(()=>hintEl.classList.remove('on'),ms); }
+hintEl.addEventListener('click',()=>hintEl.classList.remove('on'));
+function isFramed(){ try{ return self!==top; }catch(e){ return true; } }
+function policyBlocks(){ const pp=document.permissionsPolicy||document.featurePolicy; try{ return !!pp&&pp.allowsFeature&&(!pp.allowsFeature('gyroscope')||!pp.allowsFeature('accelerometer')); }catch(e){ return false; } }
+function diagnose(){ const touch=matchMedia('(pointer: coarse)').matches, tail=' For now, <b>press and drag the dot in the top right</b> to tilt the paper.';
+  if(!touch) return 'Computers have no tilt sensor. Use the <b>arrow keys</b> to tilt the paper, or drag the dot in the top right.';
+  if(typeof DeviceOrientationEvent==='undefined') return "This browser cannot read the phone's orientation."+tail;
+  if(permState==='denied') return "Motion access was denied. On iPhone, clear Safari's website data and reopen the page to be asked again."+tail;
+  if(permState==='error'||policyBlocks()||isFramed()) return "This page is running inside another page's frame, so the browser won't let it read the tilt sensor."+tail;
+  return 'No tilt data from the phone yet.'+tail; }
+
+// new sheet by long press
+const ns=$('newSheet'), fill=$('fill'); let holdT=null, holdStart=0;
+function holdTick(){ const k=Math.min(1,(performance.now()-holdStart)/1200); fill.style.transform=`scaleX(${k})`;
+  if(k>=1){ endHold(); if(live()&&!E.aiTurn){ flushPending(); emit('sh',{s:(Math.random()*1e9)>>>0}); aiHistory.length=0; againOK=false; refreshHud(); } return; } holdT=requestAnimationFrame(holdTick); }
+function endHold(){ if(holdT) cancelAnimationFrame(holdT); holdT=null; fill.style.transform='scaleX(0)'; }
+ns.addEventListener('pointerdown',e=>{ e.preventDefault(); if(E.aiTurn||!live()) return; holdStart=performance.now(); holdT=requestAnimationFrame(holdTick); });
+['pointerup','pointerleave','pointercancel'].forEach(ev=>ns.addEventListener(ev,endHold));
+ns.addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&!holdT){ e.preventDefault(); if(E.aiTurn||!live()) return; holdStart=performance.now(); holdT=requestAnimationFrame(holdTick); } });
+ns.addEventListener('keyup',endHold);
+
+// ================= the partner =================
+// A partner is { label, turn(ctx) -> Promise<{gestures:[...]}> }. See docs/PARTNER_API.md.
+window.InkPartners=window.InkPartners||{};
+const aiHistory=[]; let lastPartnerTick=0, againOK=false, sampleFn=null, imagesOK=false, activeName=null;
+(async()=>{ if(!window.claude||typeof window.claude.use!=='function') return;
+  try{ sampleFn=await window.claude.use('sample'); }catch(e){ sampleFn=null; } if(!sampleFn) return;
+  try{ const lim=await sampleFn.limits(); imagesOK=!!(lim&&lim.images); }catch(e){ imagesOK=false; }
+  if(!window.InkPartners.claude) window.InkPartners.claude={label:'Claude', async turn(ctx){ const opts={modelTier:'default',cache:false}; if(ctx.imageBlob&&imagesOK) opts.images=ctx.imageBlob;
+    const raw=await sampleFn.json(ctx.prompt,opts); return {gestures:raw&&raw.gestures?raw.gestures:raw}; }};
+  refreshPartners(); })();
+const partnerList=()=>Object.entries(window.InkPartners).filter(([k,p])=>p&&typeof p.turn==='function');
+function refreshPartners(){ const l=partnerList(), sel=$('partnerSel'); if(!l.length){ activeName=null; } else if(!l.some(x=>x[0]===activeName)) activeName=l[0][0];
+  sel.innerHTML=l.map(([k,p])=>`<option value="${k}">${(p.label||k).replace(/</g,'&lt;')}</option>`).join(''); sel.value=activeName||''; sel.hidden=l.length<2; refreshHud(); }
+$('partnerSel').addEventListener('change',e=>{ activeName=e.target.value; });
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function snapshotImage(){ const W=480, H=Math.round(480*cv.height/cv.width), c=document.createElement('canvas'); c.width=W; c.height=H; c.getContext('2d').drawImage(cv,0,0,W,H);
+  const cols=20, rows=Math.max(10,Math.round(20*H/W)), g=document.createElement('canvas'); g.width=cols; g.height=rows; const gx=g.getContext('2d'); gx.imageSmoothingQuality='high'; gx.drawImage(c,0,0,cols,rows);
+  const d=gx.getImageData(0,0,cols,rows).data, lines=[];
+  for(let r=0;r<rows;r++){ let line=''; for(let k=0;k<cols;k++){ const i=(r*cols+k)*4, lum=(d[i]+d[i+1]+d[i+2])/3; line+=String(Math.max(0,Math.min(9,Math.round((232-lum)/205*9)))); } lines.push(line); }
+  return new Promise(res=>c.toBlob(b=>res({blob:b,grid:lines.join('\n'),cols,rows}),'image/jpeg',0.85)); }
+function rulesText(S,words,strokes){
+  const r=[]; r.push({none:'Nothing can be taken back.',one:'Your partner can take back one stroke.',unlimited:'Your partner can take back as many strokes as they like.'}[S.undo]);
+  r.push({slow:'The paper dries slowly, so ink keeps running.',normal:'The paper dries at its own pace.',fast:'The paper dries quickly.',instant:'The paper dries at once: ink stays where it lands.'}[S.drying]);
+  r.push({scarce:'Your ink pot empties fast and refills slowly.',normal:'Your ink pot pales as you pour and darkens while you rest.',unlimited:'Your ink is unlimited. A pour may carry an "ink" value from 0 (clear water) to 1 (scorched black) to choose its tone.'}[S.ink]);
+  if(S.words==='on') r.push('Your partner may write you a few words, but you can only answer in ink.');
+  if(S.redo==='redo') r.push('Your partner may ask you to try again.');
+  let extra=''; if(words) extra+=`\nYour partner wrote: "${words}"`;
+  if(strokes&&strokes.length) extra+=`\nYour partner's recent strokes (start = seconds since the session began, seconds = duration, pause = seconds since their previous stroke, path = x,y points from 0 to 1):\n${JSON.stringify(strokes)}`;
+  return {rules:r.join(' '),extra}; }
+function buildPrompt(ctx){
+  const hist=aiHistory.slice(-3).map(h=>`Turn ${h.turn}: ${JSON.stringify(h.gestures)}`).join('\n')||'(none: this is your first turn)', {rules,extra}=rulesText(ctx.settings,ctx.words,ctx.strokes);
+  return `You are one of two painters sharing one sheet of xuan (rice) paper in a turn-based splashed-ink (pomo) painting. You never speak. You act only through physical gestures, and the medium resists you: ink spreads through damp paper, follows the fibres unevenly, and runs downhill while the paper is tilted. ${rules} You cannot read your partner's mind.${extra}
+
+${ctx.imageBlob?'The attached image is the paper as it is now. ':''}Below is a coarse darkness map of the paper (${ctx.cols} columns x ${ctx.rows} rows, 0 = blank paper, 9 = black ink; rows run top to bottom):
+${ctx.grid}
+
+Coordinates for your gestures: x and y from 0 to 1, origin at the top-left corner of the paper. The paper's width:height ratio is ${ctx.aspect.toFixed(2)}.
+Your ink pot now: ${ctx.ink.toFixed(2)} (1 = scorched black, 0 = clear water; clear water poured onto damp ink breaks it up and pushes it outward).
+Your earlier gestures, oldest first:
+${hist}
+
+Respond to what is on the paper the way an ink painter responds to a splash: find a form, an echo, a tension, or an emptiness worth protecting. Do not try to illustrate anything literally; work with chance rather than against it. Use 1 to 5 gestures.
+
+Gesture types:
+{"type":"pour","x":0.5,"y":0.5,"seconds":1.5,"path":[[0.55,0.6],[0.6,0.7]]}  press and hold at (x,y) for 0.3 to 4 seconds; the optional path drags the pour through those points over that time. Longer pours spread wider.
+{"type":"tilt","dx":0,"dy":1,"seconds":1.5}  tilt the paper for 0.5 to 3 seconds; wet ink runs toward (dx,dy), each from -1 to 1, dy > 0 meaning toward the bottom. Dry ink does not move.
+{"type":"wait","seconds":2}  pause 0.5 to 4 seconds while the paper absorbs.
+
+Reply with only a JSON object of the form {"gestures":[...]}. No words, no explanation.`; }
+function sanitize(raw){
+  const list=Array.isArray(raw&&raw.gestures)?raw.gestures:(Array.isArray(raw)?raw:[]), out=[]; let total=0;
+  for(const g of list.slice(0,6)){ if(!g||typeof g!=='object') continue;
+    if(g.type==='pour'){ const secs=clampN(g.seconds,0.3,4), path=Array.isArray(g.path)?g.path.slice(0,8).filter(p=>Array.isArray(p)&&p.length>=2).map(p=>[r4(clampN(p[0],0,1)),r4(clampN(p[1],0,1))]):[];
+      const o={type:'pour',x:r4(clampN(g.x,0,1)),y:r4(clampN(g.y,0,1)),seconds:r3(secs),path}; if(typeof g.ink==='number') o.ink=r3(clampN(g.ink,0,1)); out.push(o); total+=secs; }
+    else if(g.type==='tilt'){ const secs=clampN(g.seconds,0.5,3); out.push({type:'tilt',dx:r3(clampN(g.dx,-1,1)),dy:r3(clampN(g.dy,-1,1)),seconds:r3(secs)}); total+=secs; }
+    else if(g.type==='wait'){ const secs=clampN(g.seconds,0.5,4); out.push({type:'wait',seconds:r3(secs)}); total+=secs; }
+    if(total>16) break; }
+  return out; }
+function setPass(state){ const b=$('pass'); b.classList.toggle('busy',state!=='idle'); b.disabled=state!=='idle';
+  b.textContent=state==='looking'?'Your partner is looking':state==='painting'?'Your partner is painting':'Pass the paper'; }
+async function passPaper(again){
+  if(E.aiTurn||!live()||!activeName) return; const partner=window.InkPartners[activeName]; if(!partner) return;
+  const S={...E.settings}, words=S.words==='on'?$('words').value.trim().slice(0,140):'';
+  flushPending(); againOK=false; setPass('looking'); refreshHud();
+  if(again) emit('rd',{});
+  const strokes=S.sees==='paper+strokes'?strokesSummary(lastPartnerTick):null;
+  emit('pa',{partner:activeName,words:words||undefined,sees:S.sees}); $('words').value=''; render();
+  let gestures=[], prompt='';
+  try{
+    const snap=await snapshotImage(), ctx={grid:snap.grid,cols:snap.cols,rows:snap.rows,imageBlob:snap.blob,aspect:cv.width/cv.height,ink:E.Cai,words,strokes,settings:S,history:aiHistory.slice()};
+    ctx.prompt=buildPrompt(ctx); prompt=ctx.prompt;
+    const res=await partner.turn(ctx); gestures=sanitize(res); }
+  catch(e){ const code=(e&&e.code)||'error';
+    if(['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed'].includes(code)){ showHint('Your partner is not available in this view, so the paper stays with you.',6000); }
+    else if(code==='rate_limited') showHint('Your partner needs a moment before the next turn. Try again later.',6000);
+    else if(code!=='cancelled') showHint('Your partner could not take the paper this time. You can pass it again.',5000);
+    emit('pe',{code}); setPass('idle'); refreshHud(); return; }
+  if(!gestures.length){ emit('pe',{code:'no_gestures'}); setPass('idle'); refreshHud(); showHint('Your partner passed without painting.',4000); return; }
+  emit('pr',{partner:activeName,prompt});
+  E.onPartnerDone=()=>{ lastPartnerTick=E.tick; setPass('idle'); againOK=E.settings.redo==='redo'; refreshHud(); if(session) saveSession(); };
+  aiHistory.push({turn:aiHistory.length+1,gestures}); setPass('painting'); emit('pg',{gestures}); }
+$('pass').addEventListener('click',()=>passPaper(false));
+$('again').addEventListener('click',()=>{ if(againOK) passPaper(true); });
+$('undo').addEventListener('click',()=>{ if(live()&&!E.aiTurn&&snapStack.length){ flushPending(); emit('un',{}); refreshHud(); } });
+$('pot').addEventListener('click',()=>{ if(!live()||E.settings.ink!=='unlimited') return; let i=TONE_CYCLE.findIndex(c=>Math.abs(c-E.C)<0.03); i=(i+1)%TONE_CYCLE.length; emit('pot',{c:TONE_CYCLE[i]}); refreshHud(); });
+
+// ================= HUD and panels =================
+const potEl=$('pot'), toneEl=$('tone'), bubble=$('bubble');
+function refreshHud(){
+  const S=E.settings, l=live();
+  const k=0.12+0.88*E.C, p=[236,230,214], q=[27,29,34], c=p.map((v,i)=>Math.round(v+(q[i]-v)*k));
+  potEl.style.background=`rgb(${c[0]},${c[1]},${c[2]})`; potEl.disabled=S.ink!=='unlimited';
+  for(const [t,name] of TONES){ if(E.C>t){ if(toneEl.textContent!==name) toneEl.textContent=name; break; } }
+  $('potHint').textContent=S.ink==='unlimited'?'tap to change tone':(S.ink==='scarce'?'it empties quickly':'pause to regrind');
+  $('words').hidden=S.words!=='on'||!activeName; $('undo').hidden=S.undo==='none'; $('undo').disabled=!snapStack.length||E.aiTurn;
+  $('undo').textContent=snapStack.length?`Undo (${snapStack.length})`:'Undo';
+  $('again').hidden=!(againOK&&S.redo==='redo'&&!E.aiTurn); $('pass').hidden=!activeName; $('fricBtn').hidden=LOCKED;
+  $('recdot').style.opacity=keepRecord?1:0.25; $('recdot').title=keepRecord?'Recording on this device':'Not recording';
+  if(!l) return; }
+function renderGroups(){
+  const box=$('groups'); box.innerHTML='';
+  for(const key of Object.keys(KNOBS)){ const K=KNOBS[key], g=document.createElement('div'); g.className='group';
+    g.innerHTML=`<div class="name" id="n-${key}">${K.label}</div><div class="seg" role="radiogroup" aria-labelledby="n-${key}"></div><p class="blurb"></p>`;
+    const seg=g.querySelector('.seg'), bl=g.querySelector('.blurb');
+    for(const [v,lab] of K.opts){ const b=document.createElement('button'); b.type='button'; b.className='opt'; b.textContent=lab; b.setAttribute('role','radio'); b.setAttribute('aria-checked',String(E.settings[key]===v));
+      b.addEventListener('click',()=>{ if(!live()&&mode!=='boot') return; setKnob(key,v); }); seg.appendChild(b); }
+    bl.textContent=K.blurb[E.settings[key]]; box.appendChild(g); } }
+function setKnob(k,v){ if(E.settings[k]===v) return; if(live()){ flushPending(); emit('k',{k,v}); } else E.settings[k]=v; renderGroups(); refreshHud(); }
+$('presetSeamful').addEventListener('click',()=>{ for(const k of Object.keys(KNOBS)) setKnob(k,DEFAULTS[k]); });
+$('presetSeamless').addEventListener('click',()=>{ for(const k of Object.keys(KNOBS)) setKnob(k,SEAMLESS[k]); });
+function fmtDur(s){ s=Math.round(s); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
+function renderSessions(){
+  $('sessLede').textContent=session&&!session.endedAt?`This session has run for ${fmtDur(E.tick/60)}. ${keepRecord?'It is being kept on this device.':'It is not being kept.'}`:'No session is running.';
+  $('sessKeep').setAttribute('aria-checked',String(keepRecord)); $('sessKeep').textContent=keepRecord?'Keeping a record on this device':'Not keeping a record';
+  const ul=$('sessList'); ul.innerHTML=''; const idx=readIndex();
+  if(!idx.length){ const li=document.createElement('li'); li.innerHTML='<span class="meta">Nothing saved yet.</span>'; ul.appendChild(li); }
+  for(const it of idx){ const li=document.createElement('li'); const d=new Date(it.startedAt), sm=it.summary||{};
+    li.innerHTML=`<span class="meta">${d.toLocaleString()} &middot; ${fmtDur(sm.seconds||0)} &middot; ${sm.strokes||0} strokes${sm.partnerTurns?` &middot; ${sm.partnerTurns} partner turns`:''}</span><span class="row"><button class="btn" data-a="replay">Replay</button><button class="btn" data-a="export">Export</button><button class="btn" data-a="delete">Delete</button></span>`;
+    li.querySelector('[data-a=replay]').addEventListener('click',()=>{ const s=loadSaved(it.id); if(s) startReplay(s); });
+    li.querySelector('[data-a=export]').addEventListener('click',async()=>{ const s=loadSaved(it.id); if(s) report(await saveFile(`splashed-ink-${it.id}.json`,serialize(s))); });
+    li.querySelector('[data-a=delete]').addEventListener('click',()=>{ deleteSaved(it.id); renderSessions(); }); ul.appendChild(li); } }
+function report(r){ showHint(r==='saved'?'Exported.':r==='copied'?'Downloads are not available here, so the session was copied to the clipboard as JSON.':r==='declined'?'Export cancelled.':'Export is not available in this view.',4000); }
+function openPanel(id){ for(const p of ['fricPanel','sessPanel']) $(p).hidden=p!==id; ui.modal=true; if(id==='fricPanel') renderGroups(); else renderSessions(); }
+function closePanels(){ $('fricPanel').hidden=true; $('sessPanel').hidden=true; ui.modal=false; }
+$('fricBtn').addEventListener('click',()=>openPanel('fricPanel')); $('sessBtn').addEventListener('click',()=>openPanel('sessPanel'));
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closePanels));
+addEventListener('keydown',e=>{ if(e.key==='Escape') closePanels(); });
+$('sessKeep').addEventListener('click',()=>{ keepRecord=!keepRecord; if(keepRecord&&session) saveSession(); renderSessions(); refreshHud(); });
+$('sessExport').addEventListener('click',async()=>{ if(!session) return; const s=session.endedAt?session:(()=>{ const c={...session,endTick:E.tick,summary:computeSummaryLive(session)}; return c; })(); report(await saveFile(`splashed-ink-${s.id}.json`,serialize(s))); });
+$('sessEnd').addEventListener('click',()=>endAndShow());
+$('sessImport').addEventListener('change',async e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; e.target.value='';
+  try{ const s=JSON.parse(await f.text()); if(!s||typeof s.format!=='string'||!s.format.startsWith('splashed-ink-session/')||!Array.isArray(s.events)) throw new Error('format');
+    if(!s.summary) { s.endTick=s.endTick||(s.events.length?s.events[s.events.length-1].t:0); s.summary=computeSummary(s); } keepRecord=true; saveSession(s); renderSessions(); startReplay(s); }
+  catch(err){ showHint('That file is not a Splashed Ink session.',4000); } });
+function endAndShow(){ if(!session) return; closePanels(); flushPending(); for(const k of [...E.pointers.keys()]) if(k!=='ai'&&live()) emit('pu',{i:k});
+  const s=finishSession(); running=false; mode='ended'; const m=s.summary, dl=$('sumStats'); dl.innerHTML='';
+  const rows=[['Time',fmtDur(m.seconds)],['Strokes',m.strokes],['Time pouring',fmtDur(m.pourSeconds)],['First stroke after',m.firstStrokeAfterSeconds===null?'-':m.firstStrokeAfterSeconds+' s'],['Median pause',m.medianPauseSeconds===null?'-':m.medianPauseSeconds+' s'],['Undos',m.undos],['Partner turns',m.partnerTurns],['Partner redos',m.partnerRedos],['Words sent',m.wordsSent],['Setting changes',m.settingChanges]];
+  for(const [a,b] of rows){ dl.insertAdjacentHTML('beforeend',`<dt>${a}</dt><dd>${b}</dd>`); }
+  $('sumTitle').textContent=keepRecord?'Session saved':'Session ended'; $('summary').hidden=false; ui.modal=true; }
+$('sumReplay').addEventListener('click',()=>{ $('summary').hidden=true; startReplay(session); });
+$('sumExport').addEventListener('click',async()=>{ report(await saveFile(`splashed-ink-${session.id}.json`,serialize(session))); });
+$('sumClose').addEventListener('click',()=>{ $('summary').hidden=true; ui.modal=false; startLive(); });
+
+// ================= replay =================
+let rp=null;
+function startReplay(s){
+  if(mode==='live'&&session&&!session.endedAt){ flushPending(); finishSession(); }
+  closePanels(); $('summary').hidden=true; running=false; mode='replay'; endHold(); stick=null;
+  const [sw,sh]=s.device.sim; initSim(sw,sh,s.paperSeed); resetEngine(s.seed,sanitizeSettings(s.settings)); render();
+  rp={s,idx:0,speed:4,end:s.endTick||(s.events.length?s.events[s.events.length-1].t+60:0)}; $('replayBar').hidden=false; $('intro').classList.add('gone');
+  document.querySelectorAll('.hud').forEach(h=>h.classList.remove('on')); updateReplayBar(); requestAnimationFrame(replayFrame); }
+function updateReplayBar(){ $('replayInfo').textContent=`Replay ${fmtDur(E.tick/60)} / ${fmtDur(rp.end/60)}`;
+  document.querySelectorAll('#replayBar [data-speed]').forEach(b=>b.style.borderColor=(+b.dataset.speed===rp.speed)?'var(--seal)':''); }
+function replayFrame(){
+  if(mode!=='replay'||!rp) return; const ev=rp.s.events;
+  for(let n=0;n<rp.speed;n++){
+    while(rp.idx<ev.length&&ev[rp.idx].t<=E.tick) applyEvent(ev[rp.idx++]);
+    if(rp.idx>=ev.length&&E.tick>=rp.end){ render(); updateReplayBar(); $('replayInfo').textContent='Replay finished'; return; }
+    engineTick(); }
+  render(); bubble.style.transform=`translate(${(E.g.x*18).toFixed(1)}px,${(E.g.y*18).toFixed(1)}px)`; updateReplayBar(); requestAnimationFrame(replayFrame); }
+document.querySelectorAll('#replayBar [data-speed]').forEach(b=>b.addEventListener('click',()=>{ if(rp){ rp.speed=+b.dataset.speed; updateReplayBar(); } }));
+$('replayStop').addEventListener('click',()=>{ rp=null; $('replayBar').hidden=true; mode='ended'; const [w,h]=defaultSimSize(); initSim(w,h,(Math.random()*1e9)>>>0); render(); $('intro').classList.remove('gone'); });
+
+// ================= live loop =================
+let last=0, acc=0, slow=0, autosaveAt=0;
+function liveFrame(now){
+  if(!live()) return;
+  const dt=Math.min(0.1,(now-last)/1000||0.016); last=now; acc+=dt;
+  let n=0; while(acc>=TICK&&n<3){ flushPending(); emitGravity(); engineTick(); acc-=TICK; n++; if(E.tick-autosaveAt>=600){ autosaveAt=E.tick; saveSession(); } }
+  if(acc>TICK) acc=0;
+  if(dt>0.03) slow++; else slow=Math.max(0,slow-1); if(slow>40&&E.steps>3){ emit('st',{n:E.steps-1}); slow=0; }
+  render(); bubble.style.transform=`translate(${(E.g.x*18).toFixed(1)}px,${(E.g.y*18).toFixed(1)}px)`;
+  if((E.tick&7)===0) refreshHud();
+  requestAnimationFrame(liveFrame); }
+function startLive(){ beginSession(); mode='live'; running=true; last=performance.now(); acc=0; slow=0; autosaveAt=0; refreshHud();
+  document.querySelectorAll('.hud').forEach(h=>h.classList.add('on')); $('intro').classList.add('gone'); renderGroups(); if(keepRecord) saveSession(); requestAnimationFrame(liveFrame); }
+
+// ================= boot =================
+resizeCanvas();
+try{ const [w,h]=defaultSimSize(); initSim(w,h,(Math.random()*1e9)>>>0); }
+catch(e){ errEl.textContent='This device cannot render floating-point textures, so the ink simulation cannot run.'; console.error(e); return; }
+resetEngine(1,settingsFromUrl()); mode='boot'; render(); refreshPartners(); refreshHud();
+if(!keepRecord) $('privacy').textContent='Nothing is being recorded in this browser during this session.';
+addEventListener('resize',()=>{ resizeCanvas(); if(!live()) render(); });
+$('start').addEventListener('click',async()=>{
+  try{ if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function') permState=await DeviceOrientationEvent.requestPermission(); else permState='n/a'; }catch(e){ permState='error'; }
+  base=null; startLive(); setTimeout(()=>{ if(!gotOri&&live()) showHint(diagnose(),12000); },2000); });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden){ if(session&&!session.endedAt) saveSession(); if(live()) running=false; }
+  else if(mode==='live'&&!running){ running=true; last=performance.now(); acc=0; requestAnimationFrame(liveFrame); } });
+addEventListener('pagehide',()=>{ if(session&&!session.endedAt) saveSession(); });
+
+// ================= test hooks (used by the repository's own checks) =================
+window.__si={ get E(){return E;}, get session(){return session;}, get mode(){return mode;}, serialize, density, computeSummary,
+  start(){ beginSession(); mode='live'; running=true; return session; },
+  step(n){ for(let i=0;i<n;i++){ flushPending(); engineTick(); } },
+  pd(id,x,y,p){ emit('pd',{i:id,x:r4(x),y:r4(y),p:p||0.5}); }, pm(id,x,y,p){ emit('pm',{i:id,x:r4(x),y:r4(y),p:p||0.5}); }, pu(id){ emit('pu',{i:id}); },
+  g(x,y){ emit('g',{x:r3(x),y:r3(y)}); }, knob(k,v){ emit('k',{k,v}); }, undo(){ emit('un',{}); }, sheet(s){ emit('sh',{s}); }, pot(c){ emit('pot',{c}); },
+  pass(gestures,words){ emit('pa',{partner:'test',words:words||undefined,sees:E.settings.sees}); emit('pg',{gestures}); }, redo(){ emit('rd',{}); },
+  finish(){ return finishSession(); }, snapDepth(){ return snapStack.length; },
+  replayHeadless(s){ if(mode==='live') running=false; const [sw,sh]=s.device.sim; initSim(sw,sh,s.paperSeed); resetEngine(s.seed,sanitizeSettings(s.settings)); let i=0; const ev=s.events,end=s.endTick;
+    for(;;){ while(i<ev.length&&ev[i].t<=E.tick) applyEvent(ev[i++]); if(i>=ev.length&&E.tick>=end) break; engineTick(); } render(); return E.tick; } };
+})();
+</script>
+</body>
+</html>

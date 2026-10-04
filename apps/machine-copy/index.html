@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Machine Copy. MIT License. See LICENSE at the repository root. -->
+<title>Machine Copy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#ece6d6; --ink:#1b1d22; --ink-soft:#4a4c52; --line:rgba(27,29,34,.16);
+  --seal:#a8322a; --seal-ink:#fbf3ea; --panel:#f4efe4;
+  --serif:"Cormorant Garamond","Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){ --paper:#17181b; --ink:#ece6d6; --ink-soft:#b9b3a6; --line:rgba(236,230,214,.18); --panel:#202125; }
+}
+:root[data-theme="dark"]{ --paper:#17181b; --ink:#ece6d6; --ink-soft:#b9b3a6; --line:rgba(236,230,214,.18); --panel:#202125; }
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:1.15rem;line-height:1.5}
+main{max-width:1280px;margin:0 auto;padding:1.5rem 1.25rem 3rem}
+h1{font-weight:500;font-size:clamp(2.4rem,7vw,3.6rem);line-height:1;margin:.5rem 0 .6rem;letter-spacing:-.01em}
+.lede{color:var(--ink-soft);max-width:42rem;margin:0 0 1.4rem}
+.bar{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:1.2rem}
+button,.file,select{font-family:var(--serif);font-size:1.05rem;border-radius:3px;padding:.5rem 1rem;cursor:pointer;
+  border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+select{padding:.5rem .6rem}
+button.primary{background:var(--seal);color:var(--seal-ink);border-color:var(--seal);font-weight:600}
+button:disabled,select:disabled{opacity:.45;cursor:default}
+button:focus-visible,.file:focus-within,select:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
+.file input{position:absolute;opacity:0;width:1px;height:1px}
+.file{position:relative;display:inline-block}
+.stage{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:1rem}
+figure{margin:0}
+figcaption{color:var(--ink-soft);font-size:1rem;margin-top:.35rem;font-style:italic}
+.frame{background:#ece6d6;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
+  aspect-ratio:4/3;overflow:hidden}
+.frame canvas{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;display:block}
+.status{margin:1rem 0 .4rem;color:var(--ink-soft);min-height:1.6em}
+.meter{height:3px;background:var(--line);position:relative;overflow:hidden;max-width:28rem}
+.meter i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--seal);transition:width .3s}
+details{margin-top:1.4rem;color:var(--ink-soft);max-width:46rem}
+summary{cursor:pointer;color:var(--ink)}
+.empty{color:#6b6a64;font-style:italic;padding:1rem;text-align:center;position:absolute}
+.frame{position:relative}
+</style>
+</head>
+<body>
+<main>
+  <h1>Machine Copy</h1>
+  <p class="lede">Load an ink painting. The program separates it into washes (broad areas of ink) and strokes (lines whose width it measures along their length), then paints both with the same simulated ink as Splashed Ink: wet ink first, then dry-brush strokes, then lines.</p>
+
+  <div class="bar">
+    <label class="file">Load a painting<input id="file" type="file" accept="image/*"></label>
+    <select id="detail" aria-label="Detail level"><option value="180">Fast</option><option value="240" selected>Standard</option><option value="320">Fine</option></select>
+    <button id="run" class="primary" disabled>Start copying</button>
+    <button id="stop" disabled>Stop</button>
+    <button id="replay" disabled>Replay</button>
+    <button id="export" disabled>Export</button>
+  </div>
+
+  <div class="stage">
+    <figure><div class="frame" id="tFrame"><canvas id="target"></canvas><div class="empty" id="tEmpty">No painting loaded yet</div></div>
+      <figcaption>The painting (red seals ignored)</figcaption></figure>
+    <figure><div class="frame" id="aFrame"><canvas id="ana"></canvas></div>
+      <figcaption id="aCap">What the program found: wet washes in grey, dry-brush strokes in blue, round pours as circles, lines in red at their measured width</figcaption></figure>
+    <figure><div class="frame" id="cFrame"><canvas id="c"></canvas></div>
+      <figcaption>The machine's copy, in simulated ink</figcaption></figure>
+  </div>
+  <p class="status" id="status" role="status">Load a painting to begin. Public-domain works from museum open-access collections are a good source.</p>
+  <div class="meter"><i id="meter"></i></div>
+
+  <details>
+    <summary>How it works</summary>
+    <p>Washes are the ink that is wider than a brush line. A broad stroke is dragged along the centre of each wash, as wide as the wash is at every point, and it is painted wet or dry depending on the image: wide, dark, smooth areas are laid as wet ink, while narrower or streaky ones are dragged with little water so the bristle marks and white gaps stay. Wet areas go down first and dry strokes are laid over them once they have settled. Round pours fill in whatever the strokes leave uncovered. The sizes come from a short calibration run on blank paper. Strokes are the thin dark structures left over. Each is thinned to a centre line, and the distance to the edge gives its width at every point. The brush then travels along that line, wide where the original is wide, thinning to the tip. Lighter strokes are drawn before darker ones, and a stroke starts at its thicker end. How dry a line runs (the broken white streaks) is measured where the original shows gaps along it, at the image's own resolution, and each stroke is also assumed to run drier toward its tip. Wide strokes are painted wet or dry from how wide, dark and streaky the original is; in a painting whose big areas are smooth wet ink, most of them will be wet and the dry-brush contrast comes from the lines.</p>
+  </details>
+</main>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const statusEl = $('status'), meter = $('meter'), cv = $('c');
+const gl = cv.getContext('webgl2', {antialias:false, alpha:false, preserveDrawingBuffer:true});
+if (!gl){ statusEl.textContent = 'This browser does not support WebGL2. Try a recent version of Safari or Chrome.'; return; }
+gl.getExtension('EXT_color_buffer_float'); gl.getExtension('EXT_color_buffer_half_float');
+
+const P = new URLSearchParams(location.search);
+const SPS = 360, POUR = 0.06, DS = 0.5;
+let SHORT = +P.get('sim') || 240;
+const SPF = +P.get('spf') || 240;
+const KR = +P.get('kr') || 1.5, KD = +P.get('kd') || 0.9;
+
+// ---------------- shaders ----------------
+const VS = `#version 300 es
+in vec2 a; out vec2 vUv; void main(){ vUv=a*0.5+0.5; gl_Position=vec4(a,0.,1.); }`;
+const SIM = `#version 300 es
+precision highp float; precision highp int;
+uniform sampler2D uS; uniform sampler2D uP; uniform vec2 uG; uniform vec4 uB; uniform int uN; uniform float uRad; uniform float uDry; uniform vec2 uDir; uniform vec3 uStr; uniform float uFlat;
+out vec4 o;
+const float K=0.9; const float G=1.2;
+float sm(float a,float b,float x){ return smoothstep(a,b,x); }
+void main(){
+  ivec2 R=textureSize(uS,0); ivec2 p=ivec2(gl_FragCoord.xy);
+  vec4 c=texelFetch(uS,p,0); vec4 pc=texelFetch(uP,p,0);
+  float F=pc.r, PM=pc.g*1.5; float w=c.r, ink=c.g, dep=c.b, m=c.a;
+  float Pp=PM*(0.4+0.6*m); float conc=w>1e-4?ink/w:0.;
+  float mob=w*sm(0.,0.12,w), mg=w*sm(0.1,0.9,w);
+  float nw=0., ni=0.; float wn4[4];
+  ivec2 D[4]=ivec2[4](ivec2(1,0),ivec2(-1,0),ivec2(0,1),ivec2(0,-1));
+  for(int k=0;k<4;k++){
+    ivec2 q=p+D[k];
+    if(q.x<0||q.y<0||q.x>=R.x||q.y>=R.y){ wn4[k]=w; continue; }
+    vec4 n=texelFetch(uS,q,0); float Pn=texelFetch(uP,q,0).g*1.5*(0.4+0.6*n.a);
+    float wn=n.r; wn4[k]=wn; float Pf=0.5*(Pp+Pn);
+    float gt=-G*dot(uG,vec2(D[k]));
+    float mobn=wn*sm(0.,0.12,wn), mgn=wn*sm(0.1,0.9,wn);
+    float up=gt>0.?mgn:mg;
+    float fl=K*Pf*((wn-w)*0.5*(mob+mobn)+gt*up*clamp(Pf*1.25,0.2,1.6));
+    fl=clamp(fl,-0.2*w,0.2*wn);
+    float concn=wn>1e-4?n.g/wn:0.; float cu=fl>0.?concn:conc;
+    nw+=fl; ni+=fl*cu;
+  }
+  w+=nw; ink=max(ink+ni,0.);
+  if(uN>0){
+    float r=distance(vec2(p)+0.5,uB.xy);
+    float prof=mix(pow(clamp(1.-r/uRad,0.,1.),1.5), smoothstep(0.,0.35,1.-r/uRad), uFlat);
+    float fo=prof*(0.6+0.4*F);
+    fo*=mix(1.0, smoothstep(0.55,0.85,F), uDry);
+    float perp=dot(vec2(p)+0.5-uB.xy,vec2(-uDir.y,uDir.x));
+    float hh=fract(sin((floor(perp/uStr.y)+uStr.z)*12.9898)*43758.5453);
+    fo*=mix(1.0,0.2+1.6*hh,uStr.x);
+    w+=uB.z*fo; ink+=uB.z*fo*uB.w;
+  }
+  float ab=0.003*F*w*(1.-m); float c2=w>1e-4?ink/w:0.;
+  w-=ab; m=min(m+ab*2.,1.); float cap=min(ab*min(c2,3.)*0.5,ink); dep+=cap; ink-=cap;
+  float grad=length(vec2(wn4[0]-wn4[1],wn4[2]-wn4[3]));
+  float rate=0.0006+0.02*(1.-sm(0.,0.08,w))+0.03*clamp(grad*3.,0.,1.)*(1.-sm(0.,0.25,w));
+  float dd=ink*clamp(rate,0.,1.)*(0.7+0.6*F); dep+=dd; ink-=dd;
+  w=max(w-0.00016,0.); m=max(m-0.00015,0.);
+  if(w<0.002){ dep+=ink; ink=0.; w=0.; }
+  w=min(w,4.);
+  o=vec4(w,ink,dep,m);
+}`;
+const DENS = `#version 300 es
+precision highp float; uniform sampler2D uS; out vec4 o;
+void main(){ vec4 s=texelFetch(uS,ivec2(gl_FragCoord.xy),0); o=vec4(clamp(1.0-exp(-(s.b*1.05+s.g*0.75)),0.,1.),0.,0.,1.); }`;
+const SHOW = `#version 300 es
+precision highp float; in vec2 vUv; uniform sampler2D uS; uniform sampler2D uFib; out vec4 o;
+vec4 tf(ivec2 i, ivec2 R){ return texelFetch(uS, clamp(i, ivec2(0), R-1), 0); }
+vec4 bil(vec2 uv){ ivec2 R=textureSize(uS,0); vec2 x=uv*vec2(R)-0.5; ivec2 i=ivec2(floor(x)); vec2 f=fract(x);
+  return mix(mix(tf(i,R),tf(i+ivec2(1,0),R),f.x), mix(tf(i+ivec2(0,1),R),tf(i+ivec2(1,1),R),f.x), f.y); }
+void main(){
+  vec4 s=bil(vUv); float fib=texture(uFib,vUv).r;
+  vec3 paper=mix(vec3(0.900,0.876,0.823),vec3(0.958,0.942,0.906),fib); paper*=1.0-0.07*s.a;
+  float v=1.0-exp(-(s.b*1.05+s.g*0.75)); v=clamp(v*(0.85+0.25*fib),0.,1.);
+  o=vec4(mix(paper,vec3(0.106,0.114,0.133),v),1.);
+}`;
+function sh(t,src){ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+function prog(fs){ const p=gl.createProgram(); gl.attachShader(p,sh(gl.VERTEX_SHADER,VS)); gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs)); gl.bindAttribLocation(p,0,'a'); gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u={}; const n=gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS); for(let i=0;i<n;i++){ const nm=gl.getActiveUniform(p,i).name; u[nm]=gl.getUniformLocation(p,nm); } return {p,u}; }
+let simP, densP, showP;
+try { simP=prog(SIM); densP=prog(DENS); showP=prog(SHOW); }
+catch(e){ statusEl.textContent='The ink simulation could not start on this device.'; console.error(e); return; }
+const qb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,qb);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+
+// ---------------- GL helpers ----------------
+let FMT=null;
+function tex(internal,type,w,h,filter,data,format){
+  const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,internal,w,h,0,format||gl.RGBA,type,data||null); return t; }
+function fbo(t){ const f=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,f); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0); return f; }
+function pickFormat(){
+  for (const f of [[gl.RGBA32F,gl.FLOAT],[gl.RGBA16F,gl.HALF_FLOAT]]){
+    const t=tex(f[0],f[1],4,4,gl.NEAREST); const b=fbo(t);
+    const ok=gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE; gl.deleteFramebuffer(b); gl.deleteTexture(t);
+    if (ok) return f; }
+  return null; }
+function rng(seed){ let s=seed>>>0; return ()=>{ s=(s+0x6D2B79F5)>>>0; let t=s; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; }; }
+const brushR=(w,h)=>Math.max(3,0.05*Math.min(w,h));
+
+function makePaper(w,h,seed){
+  const R=rng(seed); const HW=w*2, HH=h*2;
+  const hc=document.createElement('canvas'); hc.width=HW; hc.height=HH; const x=hc.getContext('2d');
+  x.fillStyle='rgb(128,128,128)'; x.fillRect(0,0,HW,HH);
+  const n=Math.floor(w*h*0.35);
+  for (const col of ['#fff','#000']){ x.strokeStyle=col; x.globalAlpha=0.28; x.lineWidth=1; x.beginPath();
+    for (let i=0;i<n/2;i++){ let px=R()*HW, py=R()*HH, a=R()*Math.PI*2; const L=6+R()*34; x.moveTo(px,py);
+      for (let k=0;k<4;k++){ a+=(R()-0.5)*0.5; px+=Math.cos(a)*L/4; py+=Math.sin(a)*L/4; x.lineTo(px,py); } }
+    x.stroke(); }
+  x.globalAlpha=1;
+  const hd=x.getImageData(0,0,HW,HH).data; let mn=255,mx=0; for(let i=0;i<hd.length;i+=4){ if(hd[i]<mn)mn=hd[i]; if(hd[i]>mx)mx=hd[i]; }
+  const hi=new Uint8Array(HW*HH); for(let i=0,j=0;i<hd.length;i+=4,j++) hi[j]=Math.round((hd[i]-mn)/(mx-mn||1)*255);
+  const sc=document.createElement('canvas'); sc.width=w; sc.height=h; const sx=sc.getContext('2d'); sx.imageSmoothingQuality='high'; sx.drawImage(hc,0,0,w,h);
+  const sd=sx.getImageData(0,0,w,h).data; mn=255; mx=0; for(let i=0;i<sd.length;i+=4){ if(sd[i]<mn)mn=sd[i]; if(sd[i]>mx)mx=sd[i]; }
+  function low(cell){ const gw=Math.max(2,Math.ceil(w/cell)+1), gh=Math.max(2,Math.ceil(h/cell)+1);
+    const nc=document.createElement('canvas'); nc.width=gw; nc.height=gh; const nx=nc.getContext('2d'); const id=nx.createImageData(gw,gh);
+    for(let i=0;i<gw*gh;i++){ const v=R()*255; id.data[i*4]=v; id.data[i*4+1]=v; id.data[i*4+2]=v; id.data[i*4+3]=255; } nx.putImageData(id,0,0);
+    const oc=document.createElement('canvas'); oc.width=w; oc.height=h; const ox=oc.getContext('2d'); ox.imageSmoothingQuality='high'; ox.drawImage(nc,0,0,w,h);
+    return ox.getImageData(0,0,w,h).data; }
+  const n1=low(12), n2=low(4); const arr=new Uint8Array(w*h*4);
+  for(let i=0;i<sd.length;i+=4){ const Fn=(sd[i]-mn)/(mx-mn||1); const F=0.35+0.65*Fn; const LF=(0.6*n1[i]+0.4*n2[i])/255;
+    let PM=0.08+1.3*LF*LF+0.9*Math.max(0,Math.min(1,Fn-0.55))*2; PM=Math.min(1.5,Math.max(0.05,PM));
+    arr[i]=Math.round(F*255); arr[i+1]=Math.round(PM/1.5*255); arr[i+3]=255; }
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+  const paper=tex(gl.RGBA8,gl.UNSIGNED_BYTE,w,h,gl.NEAREST,arr);
+  const fib=tex(gl.R8,gl.UNSIGNED_BYTE,HW,HH,gl.LINEAR,hi,gl.RED);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+  return {paper,fib};
+}
+
+function makeSim(w,h,seed){
+  FMT=FMT||pickFormat(); if(!FMT) throw new Error('nofloat');
+  const p=makePaper(w,h,seed);
+  const t=[tex(FMT[0],FMT[1],w,h,gl.NEAREST),tex(FMT[0],FMT[1],w,h,gl.NEAREST)];
+  const s={w,h,t,f:[fbo(t[0]),fbo(t[1])],i:0,paper:p.paper,fib:p.fib,dTex:null,dFb:null};
+  simClear(s); return s;
+}
+function freeSim(s){ if(!s) return; s.t.forEach(x=>gl.deleteTexture(x)); s.f.forEach(x=>gl.deleteFramebuffer(x)); gl.deleteTexture(s.paper); gl.deleteTexture(s.fib); if(s.dTex){ gl.deleteTexture(s.dTex); gl.deleteFramebuffer(s.dFb); } }
+function simClear(s){ for(const f of s.f){ gl.bindFramebuffer(gl.FRAMEBUFFER,f); gl.viewport(0,0,s.w,s.h); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT); } s.i=0; }
+function simBegin(s){ gl.useProgram(simP.p); gl.viewport(0,0,s.w,s.h); gl.uniform2f(simP.u.uG,0,0); gl.uniform1i(simP.u.uS,0); gl.uniform1i(simP.u.uP,1);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,s.paper); }
+function simStep(s,brush,rad,dry,dir,str){
+  gl.uniform2f(simP.u.uG,s.gx||0,s.gy||0);
+  if (brush){ gl.uniform4f(simP.u.uB,brush[0],brush[1],brush[2],brush[3]); gl.uniform1f(simP.u.uRad,rad); gl.uniform1f(simP.u.uDry,dry||0);
+    gl.uniform2f(simP.u.uDir,dir?dir[0]:1,dir?dir[1]:0); gl.uniform3f(simP.u.uStr,str?str[0]:0,str?str[1]:1,str?str[2]:0); gl.uniform1f(simP.u.uFlat,str&&str[3]?str[3]:0); gl.uniform1i(simP.u.uN,1); }
+  else gl.uniform1i(simP.u.uN,0);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,s.t[s.i]); gl.bindFramebuffer(gl.FRAMEBUFFER,s.f[1-s.i]);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4); s.i^=1; }
+function simShow(s,target){
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.viewport(0,0,cv.width,cv.height); gl.useProgram(showP.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,s.t[s.i]); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,s.fib);
+  gl.uniform1i(showP.u.uS,0); gl.uniform1i(showP.u.uFib,1); gl.drawArrays(gl.TRIANGLE_STRIP,0,4); }
+function simDensity(s){
+  if(!s.dTex){ s.dTex=tex(gl.RGBA8,gl.UNSIGNED_BYTE,s.w,s.h,gl.NEAREST); s.dFb=fbo(s.dTex); }
+  gl.useProgram(densP.p); gl.viewport(0,0,s.w,s.h); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,s.t[s.i]); gl.uniform1i(densP.u.uS,0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,s.dFb); gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  const px=new Uint8Array(s.w*s.h*4); gl.readPixels(0,0,s.w,s.h,gl.RGBA,gl.UNSIGNED_BYTE,px);
+  const D=new Float32Array(s.w*s.h);
+  for(let y=0;y<s.h;y++){ const gy=s.h-1-y; for(let x=0;x<s.w;x++) D[y*s.w+x]=px[(gy*s.w+x)*4]/255; }
+  return D; }
+
+// ---------------- image analysis (CPU) ----------------
+const Dn = t => -Math.log(1-Math.min(Math.max(t,0),0.97))/1.05;   // ink density that renders as tone t
+
+function morph(src,W,H,r,isMax){
+  const tmp=new Float32Array(W*H), out=new Float32Array(W*H);
+  for(let y=0;y<H;y++){ const o=y*W; for(let x=0;x<W;x++){ let v=isMax?-1e9:1e9; const a=Math.max(0,x-r), b=Math.min(W-1,x+r);
+    for(let k=a;k<=b;k++){ const s=src[o+k]; if(isMax? s>v : s<v) v=s; } tmp[o+x]=v; } }
+  for(let x=0;x<W;x++){ for(let y=0;y<H;y++){ let v=isMax?-1e9:1e9; const a=Math.max(0,y-r), b=Math.min(H-1,y+r);
+    for(let k=a;k<=b;k++){ const s=tmp[k*W+x]; if(isMax? s>v : s<v) v=s; } out[y*W+x]=v; } }
+  return out; }
+
+function edt(fg,W,H){
+  const INF=1e20, n=Math.max(W,H);
+  const f=new Float64Array(n), z=new Float64Array(n+2), v=new Int32Array(n+1), g=new Float64Array(W*H);
+  for(let i=0;i<W*H;i++) g[i]=fg[i]?INF:0;
+  const pass=(len,get,set)=>{
+    for(let q=0;q<len;q++) f[q]=get(q);
+    let k=0; v[0]=0; z[0]=-INF; z[1]=INF;
+    for(let q=1;q<len;q++){
+      let s=((f[q]+q*q)-(f[v[k]]+v[k]*v[k]))/(2*q-2*v[k]);
+      while(s<=z[k]){ k--; s=((f[q]+q*q)-(f[v[k]]+v[k]*v[k]))/(2*q-2*v[k]); }
+      k++; v[k]=q; z[k]=s; z[k+1]=INF; }
+    k=0;
+    for(let q=0;q<len;q++){ while(z[k+1]<q) k++; set(q,(q-v[k])*(q-v[k])+f[v[k]]); } };
+  for(let x=0;x<W;x++) pass(H,y=>g[y*W+x],(y,val)=>{ g[y*W+x]=val; });
+  for(let y=0;y<H;y++) pass(W,x=>g[y*W+x],(x,val)=>{ g[y*W+x]=val; });
+  const out=new Float32Array(W*H); for(let i=0;i<W*H;i++) out[i]=Math.sqrt(g[i]); return out; }
+
+function thin(bin,W,H){
+  const img=bin.slice(); let changed=true; const del=[];
+  const Pp=(x,y)=>(x<0||y<0||x>=W||y>=H)?0:img[y*W+x];
+  while(changed){ changed=false;
+    for(let step=0;step<2;step++){ del.length=0;
+      for(let y=0;y<H;y++) for(let x=0;x<W;x++){ if(!img[y*W+x]) continue;
+        const p2=Pp(x,y-1),p3=Pp(x+1,y-1),p4=Pp(x+1,y),p5=Pp(x+1,y+1),p6=Pp(x,y+1),p7=Pp(x-1,y+1),p8=Pp(x-1,y),p9=Pp(x-1,y-1);
+        const B=p2+p3+p4+p5+p6+p7+p8+p9; if(B<2||B>6) continue;
+        const A=(!p2&&p3?1:0)+(!p3&&p4?1:0)+(!p4&&p5?1:0)+(!p5&&p6?1:0)+(!p6&&p7?1:0)+(!p7&&p8?1:0)+(!p8&&p9?1:0)+(!p9&&p2?1:0);
+        if(A!==1) continue;
+        if(step===0){ if(p2*p4*p6!==0||p4*p6*p8!==0) continue; } else { if(p2*p4*p8!==0||p2*p6*p8!==0) continue; }
+        del.push(y*W+x); }
+      for(const i of del){ img[i]=0; changed=true; } } }
+  return img; }
+
+function dropSmall(bin,W,H,minA){
+  const lab=new Int32Array(W*H), st=new Int32Array(W*H); let nl=0;
+  for(let i=0;i<W*H;i++){ if(!bin[i]||lab[i]) continue; nl++; let sp=0, area=0; st[sp++]=i; lab[i]=nl; const mem=[];
+    while(sp){ const c=st[--sp]; mem.push(c); area++; const cx=c%W, cy=(c/W)|0;
+      for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy) continue; const X=cx+dx,Y=cy+dy; if(X<0||Y<0||X>=W||Y>=H) continue; const n=Y*W+X; if(bin[n]&&!lab[n]){ lab[n]=nl; st[sp++]=n; } } }
+    if(area<minA) for(const c of mem) bin[c]=0; }
+  return bin; }
+
+const NB=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+function traceSkeleton(sk,W,H){
+  const deg=new Uint8Array(W*H), pts=[];
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const i=y*W+x; if(!sk[i]) continue; let c=0;
+    for(const [dx,dy] of NB){ const X=x+dx,Y=y+dy; if(X>=0&&Y>=0&&X<W&&Y<H&&sk[Y*W+X]) c++; } deg[i]=c; pts.push(i); }
+  const visited=new Uint8Array(W*H), isJ=i=>deg[i]>=3, out=[];
+  const order=pts.slice().sort((a,b)=>(deg[a]===1?0:1)-(deg[b]===1?0:1));
+  function walk(start){
+    const path=[start]; if(!isJ(start)) visited[start]=1;
+    let c=start, hx=0, hy=0;
+    for(;;){
+      const cx=c%W, cy=(c/W)|0; let best=-1, bs=-2;
+      for(const [dx,dy] of NB){ const X=cx+dx,Y=cy+dy; if(X<0||Y<0||X>=W||Y>=H) continue; const n=Y*W+X; if(!sk[n]) continue;
+        if(visited[n]&&!isJ(n)) continue;
+        let recent=false; for(let k=Math.max(0,path.length-4);k<path.length;k++) if(path[k]===n){ recent=true; break; } if(recent) continue;
+        const L=Math.hypot(dx,dy); const sc=(hx===0&&hy===0)?1/L:(dx*hx+dy*hy)/L;
+        if(sc>bs){ bs=sc; best=n; } }
+      if(best<0||bs<-0.1) break;
+      path.push(best); if(!isJ(best)) visited[best]=1;
+      const a=path[Math.max(0,path.length-6)]; hx=(best%W)-(a%W); hy=((best/W)|0)-((a/W)|0); const m=Math.hypot(hx,hy)||1; hx/=m; hy/=m;
+      c=best; if(path.length>30000) break; }
+    return path; }
+  for(const s of order){
+    if(!sk[s]) continue; if(visited[s]&&!isJ(s)) continue;
+    if(deg[s]===1||isJ(s)){ out.push(walk(s)); }
+    else { const a=walk(s), b=walk(s); out.push(b.slice(1).reverse().concat(a)); } }
+  return out; }
+
+function smoothSeq(a,k){ const n=a.length, o=new Array(n);
+  for(let i=0;i<n;i++){ const kk=Math.min(k,i,n-1-i); let sx=0,sy=0,sw=0,c=0; for(let j=i-kk;j<=i+kk;j++){ const p=a[j]; if(Array.isArray(p)){ sx+=p[0]; sy+=p[1]; } else sx+=p; c++; }
+    o[i]=Array.isArray(a[0])?[sx/c,sy/c]:sx/c; } return o; }
+function dpKeep(pts,eps){
+  const n=pts.length, keep=new Uint8Array(n); keep[0]=1; keep[n-1]=1;
+  const rec=(a,b)=>{ if(b<=a+1) return; let md=-1, mi=-1; const [x1,y1]=pts[a], [x2,y2]=pts[b]; const dx=x2-x1, dy=y2-y1, L=Math.hypot(dx,dy)||1e-9;
+    for(let i=a+1;i<b;i++){ const d=Math.abs(dy*(pts[i][0]-x1)-dx*(pts[i][1]-y1))/L; if(d>md){ md=d; mi=i; } }
+    if(md>eps){ keep[mi]=1; rec(a,mi); rec(mi,b); } };
+  rec(0,n-1); const idx=[]; for(let i=0;i<n;i++) if(keep[i]) idx.push(i); return idx; }
+
+// Splits a target ink map T (0..1) into washes (discs) and strokes (centre lines with width).
+function buildPlan(T,W,H,Tf,FW,FH){
+  const t0=performance.now(); const R=brushR(W,H);
+  const sx=FW/W, sy=FH/H;
+  const ro=Math.max(3,Math.round(0.018*Math.min(W,H)));
+  const op=morph(morph(T,W,H,ro,false),W,H,ro,true);                  // grey opening: keeps what is wider than ~2*ro
+  // ---- strokes: thin dark structures
+  const mask=new Uint8Array(W*H); for(let j=0;j<W*H;j++) mask[j]=(T[j]-op[j])>0.12?1:0;
+  dropSmall(mask,W,H,5);
+  const sk=thin(mask,W,H), dtM=edt(mask,W,H);
+  const paths=traceSkeleton(sk,W,H);
+  const strokes=[];
+  for(const path of paths){
+    let pts=path.map(i=>[(i%W)+0.5,((i/W)|0)+0.5]);
+    let wd=path.map(i=>Math.max(1,2*dtM[i]-1));
+    let len=0; for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
+    const wmax=Math.max(...wd);
+    if(path.length<3){ if(wmax<2.5) continue; }
+    else { if(len<6 && !(wmax>=3 && len>=3)) continue; pts=smoothSeq(pts,2); wd=smoothSeq(wd,3); }
+    let keep=[...Array(pts.length).keys()]; if(pts.length>3) keep=dpKeep(pts,0.6);
+    const gap=new Float32Array(pts.length);                                   // 1 where the ink along the stroke breaks (dry-brush white), measured at the image's own resolution
+    { const v=pts.map(q=>{ const X=Math.floor(q[0]*sx), Y=Math.floor(q[1]*sy); let m=0; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const XX=X+dx, YY=Y+dy; if(XX>=0&&YY>=0&&XX<FW&&YY<FH) m=Math.max(m,Tf[YY*FW+XX]); } return m; });
+      const sv=v.slice().sort((a,b)=>a-b), thr=0.5*sv[Math.floor(0.9*(sv.length-1))];
+      for(let j=0;j<pts.length;j++) gap[j]=v[j]<thr?1:0; }
+    const toneAt=pts.map(q=>{ const x=Math.min(W-1,Math.max(0,Math.floor(q[0]))), y=Math.min(H-1,Math.max(0,Math.floor(q[1]))); let sm=0,c=0;
+      for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const X=x+dx,Y=y+dy; if(X>=0&&Y>=0&&X<W&&Y<H){ sm+=T[Y*W+X]; c++; } } return sm/c; });
+    const toneS=smoothSeq(toneAt,4);                                          // typical tone along the stroke, not its darkest speck
+    const sp=keep.map(i=>{ const x=Math.min(W-1,Math.max(0,Math.floor(pts[i][0]))), y=Math.min(H-1,Math.max(0,Math.floor(pts[i][1])));
+      const tone=toneS[i];
+      const wc=op[y*W+x]; let gs=0,gc=0; for(let j=Math.max(0,i-5);j<=Math.min(pts.length-1,i+5);j++){ gs+=gap[j]; gc++; }
+      return [pts[i][0],pts[i][1],wd[i],Math.max(0.3*Dn(tone),Dn(tone)-Dn(wc)),gc?gs/gc:0,tone]; });
+    // draw from the thicker end
+    const n=sp.length, e=Math.max(1,Math.floor(n*0.25));
+    let a=0,b=0; for(let i=0;i<e;i++){ a+=sp[i][2]; b+=sp[n-1-i][2]; }
+    if(n>1&&a<b) sp.reverse();
+    let tsum=0; for(const p of sp) tsum+=p[5]; const tone=tsum/n;
+    for(let i=0;i<n;i++){ const u=n>1?i/(n-1):0; sp[i][4]=Math.max(0,Math.min(0.85,0.06+1.2*sp[i][4]+0.25*u*u*u)); }
+    strokes.push({pts:sp.map(p=>[p[0],p[1],p[2],p[3],p[4]]),tone,len});
+  }
+  strokes.sort((p,q)=>(q.len*(0.3+q.tone))-(p.len*(0.3+p.tone)));      // keep the most significant strokes...
+  if(strokes.length>600) strokes.length=600;
+  strokes.sort((p,q)=>(p.tone-q.tone)||(q.len-p.len));                  // ...then paint light before dark
+  // ---- washes: broad strokes along the medial axis, then discs for what is left
+  const rm=new Uint8Array(W*H); for(let j=0;j<W*H;j++) rm[j]=op[j]>0.10?1:0;
+  dropSmall(rm,W,H,20);
+  const dtW=edt(rm,W,H), rhoMin=Math.max(4,0.45*R);
+  const cov=new Uint8Array(W*H);
+  const meanOp=(x,y,r)=>{ let sm=0,c=0; const rr=Math.max(1,Math.ceil(r));
+    for(let yy=Math.max(0,Math.floor(y)-rr);yy<=Math.min(H-1,Math.floor(y)+rr);yy++) for(let xx=Math.max(0,Math.floor(x)-rr);xx<=Math.min(W-1,Math.floor(x)+rr);xx++){
+      if(Math.hypot(xx+0.5-x,yy+0.5-y)<=r){ sm+=op[yy*W+xx]; c++; } }
+    return c?sm/c:0.3; };
+  let washStrokes=[];
+  for(const path of traceSkeleton(thin(rm,W,H),W,H)){
+    if(path.length<6) continue;
+    let pts=smoothSeq(path.map(i=>[(i%W)+0.5,((i/W)|0)+0.5]),3), rho=smoothSeq(path.map(i=>dtW[i]),4);
+    let len=0; for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
+    const rmean=rho.reduce((a,b)=>a+b,0)/rho.length;
+    if(rmean<rhoMin*0.9||len<Math.max(8,1.3*rmean)) continue;
+    const keep=dpKeep(pts,1.0);
+    const sp=keep.map(i=>[pts[i][0],pts[i][1],rho[i],meanOp(pts[i][0],pts[i][1],0.6*rho[i]),0]);
+    const n=sp.length, h=Math.max(1,Math.floor(n/2)); let a=0,b=0; for(let i=0;i<h;i++){ a+=sp[i][2]; b+=sp[n-1-i][2]; }
+    if(n>1&&a<b) sp.reverse();                                              // start at the fuller end
+    sp.forEach((q,i)=>{ const u=n>1?i/(n-1):0; q[4]=0.12+0.5*u*u*u; });    // the brush runs dry toward the tail
+    washStrokes.push({pts:sp,len,rmean}); }
+  washStrokes.sort((p,q)=>q.rmean*q.len-p.rmean*p.len);
+  if(washStrokes.length>120) washStrokes.length=120;
+  const cnt=new Uint8Array(W*H), lastId=new Int16Array(W*H).fill(-1);
+  washStrokes.forEach((ws,si)=>{ const q=ws.pts;
+    for(let i=0;i<q.length-1;i++){ const a=q[i], b=q[i+1], m=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])));
+      for(let t=0;t<=m;t++){ const u=t/m, x=a[0]+(b[0]-a[0])*u, y=a[1]+(b[1]-a[1])*u, r=(a[2]+(b[2]-a[2])*u)*0.85, rr=Math.ceil(r);
+        for(let yy=Math.max(0,Math.floor(y)-rr);yy<=Math.min(H-1,Math.floor(y)+rr);yy++) for(let xx=Math.max(0,Math.floor(x)-rr);xx<=Math.min(W-1,Math.floor(x)+rr);xx++) if(Math.hypot(xx+0.5-x,yy+0.5-y)<=r){
+          const id=yy*W+xx; cov[id]=1; if(lastId[id]!==si){ lastId[id]=si; cnt[id]++; } } } } });
+  for(const ws of washStrokes) for(const q of ws.pts) q[7]=Math.max(1,cnt[Math.min(H-1,Math.floor(q[1]))*W+Math.min(W-1,Math.floor(q[0]))]);   // how many strokes share this spot
+  // a wash wider than one brush is laid in several parallel strokes along the same direction
+  const rcap=Math.max(6,1.6*R), expanded=[];
+  for(const ws of washStrokes){
+    const q=ws.pts, rmax=Math.max(...q.map(p=>p[2])), k=Math.min(4,Math.ceil(rmax/rcap));
+    ws.rparent=rmax;
+    if(k<=1){ expanded.push(ws); continue; }
+    const nrm=q.map((p,i)=>{ const a=q[Math.max(0,i-1)], b=q[Math.min(q.length-1,i+1)]; const tx=b[0]-a[0], ty=b[1]-a[1], m=Math.hypot(tx,ty)||1; return [-ty/m,tx/m]; });
+    for(let j=0;j<k;j++){
+      const pts=q.map((p,i)=>{ const off=(-1+(2*j+1)/k)*p[2]; return [p[0]+nrm[i][0]*off,p[1]+nrm[i][1]*off,p[2]/k*1.12,p[3],p[4],0,0,p[7]]; });
+      expanded.push({pts,len:ws.len,rmean:ws.rmean/k,rparent:rmax}); } }
+  washStrokes=expanded;
+  // wet or dry? Measured from the image: how much the ink varies ACROSS the stroke (bristle streaks), plus how wide and dark the wash is.
+  const smooth=(a,b,x)=>{ const t=Math.max(0,Math.min(1,(x-a)/(b-a))); return t*t*(3-2*t); };
+  const streakOf=pts=>{
+    const K=15, sums=new Float64Array(K), cnts=new Float64Array(K);
+    for(let i=0;i<pts.length-1;i++){ const a=pts[i], b=pts[i+1], L=Math.hypot(b[0]-a[0],b[1]-a[1]); if(L<1e-6) continue;
+      const nx=-(b[1]-a[1])/L, ny=(b[0]-a[0])/L, m=Math.max(1,Math.ceil(L*2));
+      for(let t=0;t<m;t++){ const u=t/m, x=a[0]+(b[0]-a[0])*u, y=a[1]+(b[1]-a[1])*u, r=a[2]+(b[2]-a[2])*u;
+        for(let k=0;k<K;k++){ const o=((k/(K-1))*2-1)*0.6*r, X=Math.floor((x+nx*o)*sx), Y=Math.floor((y+ny*o)*sy); if(X<0||Y<0||X>=FW||Y>=FH) continue; sums[k]+=Tf[Y*FW+X]; cnts[k]++; } } }
+    const P=[]; for(let k=0;k<K;k++) P.push(cnts[k]>0?sums[k]/cnts[k]:0);
+    let hp=0, mean=0; for(let k=0;k<K;k++) mean+=P[k]; mean/=K;
+    for(let k=1;k<K-1;k++) hp+=Math.abs(P[k]-0.5*(P[k-1]+P[k+1]));
+    return (hp/(K-2))/(mean+0.05); };
+  for(const ws of washStrokes){
+    const n=ws.pts.length; let tone=0; for(const q of ws.pts) tone+=q[3]; tone/=n;
+    ws.streak=streakOf(ws.pts);
+    const dryF=smooth(0.10,0.30,ws.streak);
+    ws.dry=!(ws.rparent>=1.4*R && tone>=0.45 && dryF<0.5);
+    ws.pts.forEach((q,i)=>{ const u=n>1?i/(n-1):0; q[4]=ws.dry?Math.min(0.85,0.3+0.5*u*u):0.12+0.5*u*u*u; }); }
+  const cand=[]; for(let j=0;j<W*H;j++) if(rm[j]&&!cov[j]&&dtW[j]>=rhoMin) cand.push(j);
+  cand.sort((a,b)=>dtW[b]-dtW[a]);
+  const washes=[];
+  for(const j of cand){
+    if(cov[j]) continue; const rho=dtW[j], cx=j%W, cy=(j/W)|0, rr=Math.ceil(rho);
+    let sm=0,c=0;
+    for(let y=Math.max(0,cy-rr);y<=Math.min(H-1,cy+rr);y++) for(let x=Math.max(0,cx-rr);x<=Math.min(W-1,cx+rr);x++){
+      const d=Math.hypot(x-cx,y-cy); if(d<=0.8*rho){ cov[y*W+x]=1; sm+=op[y*W+x]; c++; } }
+    // principal direction of the wash around this disc, so the pour is dragged along it instead of dropped as a circle
+    let n=0,mx=0,my=0,sxx=0,syy=0,sxy=0; const r2=Math.ceil(2.2*rho);
+    for(let y=Math.max(0,cy-r2);y<=Math.min(H-1,cy+r2);y++) for(let x=Math.max(0,cx-r2);x<=Math.min(W-1,cx+r2);x++){
+      if(rm[y*W+x]&&Math.hypot(x-cx,y-cy)<=2.2*rho){ n++; mx+=x; my+=y; sxx+=x*x; syy+=y*y; sxy+=x*y; } }
+    let dx=0,dy=0;
+    if(n>20){ mx/=n; my/=n; const cxx=sxx/n-mx*mx, cyy=syy/n-my*my, cxy=sxy/n-mx*my, tr=cxx+cyy, ds=Math.sqrt(Math.max(0,tr*tr/4-(cxx*cyy-cxy*cxy)));
+      const l1=tr/2+ds, l2=Math.max(1e-3,tr/2-ds), el=Math.sqrt(l1/l2), ang=0.5*Math.atan2(2*cxy,cxx-cyy);
+      if(el>1.25){ const Lh=Math.min(1.6*rho,(el-1)*0.6*rho); dx=Math.cos(ang)*Lh; dy=Math.sin(ang)*Lh; } }
+    washes.push({x:cx+0.5,y:cy+0.5,rho,tone:c?sm/c:0.3,dx,dy});
+    if(washes.length>250) break; }
+  return {washes,washStrokes,strokes,ro,ms:Math.round(performance.now()-t0)};
+}
+
+// ---------------- target ----------------
+let T=null, W=0, H=0, Tf=null, FW=0, FH=0, srcName='painting', loadedImg=null, plan=null, paperSeed=1, sim=null, calTable=null, calKey='';
+const tCv=$('target'), aCv=$('ana');
+function prepareTarget(img){
+  const aspect=img.naturalWidth/img.naturalHeight, budget=SHORT*SHORT*1.35;
+  if (aspect>=1){ H=Math.min(SHORT,Math.round(Math.sqrt(budget/aspect))); W=Math.round(H*aspect); }
+  else { W=Math.min(SHORT,Math.round(Math.sqrt(budget*aspect))); H=Math.round(W/aspect); }
+  const c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d'); x.imageSmoothingQuality='high';
+  x.drawImage(img,0,0,W,H); const d=x.getImageData(0,0,W,H).data;
+  const lum=new Float32Array(W*H), red=new Uint8Array(W*H);
+  for(let i=0,j=0;i<d.length;i+=4,j++){ lum[j]=0.3*d[i]+0.59*d[i+1]+0.11*d[i+2]; red[j]=(d[i]-(d[i+1]+d[i+2])/2>38&&d[i]>90)?1:0; }
+  const sorted=Array.from(lum).filter((v,j)=>!red[j]).sort((a,b)=>a-b);
+  const q=k=>sorted[Math.min(sorted.length-1,Math.floor(k*sorted.length))]||0;
+  const paperL=q(0.9), inkL=q(0.005);
+  T=new Float32Array(W*H);
+  for(let j=0;j<W*H;j++){ const t=red[j]?0:Math.max(0,Math.min(1,(paperL-lum[j])/Math.max(20,paperL-inkL))); T[j]=Math.max(0,(t-0.10)/0.90); }
+  FW=Math.min(img.naturalWidth,1600); FH=Math.round(FW*img.naturalHeight/img.naturalWidth);      // the same tone map at the image's own resolution, for measuring texture
+  const fc=document.createElement('canvas'); fc.width=FW; fc.height=FH; const fx=fc.getContext('2d'); fx.imageSmoothingQuality='high'; fx.drawImage(img,0,0,FW,FH);
+  const fd=fx.getImageData(0,0,FW,FH).data; Tf=new Float32Array(FW*FH);
+  for(let i=0,j=0;i<fd.length;i+=4,j++){ const l=0.3*fd[i]+0.59*fd[i+1]+0.11*fd[i+2], rd=(fd[i]-(fd[i+1]+fd[i+2])/2>38&&fd[i]>90);
+    const t=rd?0:Math.max(0,Math.min(1,(paperL-l)/Math.max(20,paperL-inkL))); Tf[j]=Math.max(0,(t-0.10)/0.90); }
+  tCv.width=W; tCv.height=H; const tx=tCv.getContext('2d'); const id=tx.createImageData(W,H);
+  for(let j=0;j<W*H;j++){ const v=1-T[j]; id.data[j*4]=Math.round(236*v+27*(1-v)); id.data[j*4+1]=Math.round(230*v+29*(1-v)); id.data[j*4+2]=Math.round(214*v+34*(1-v)); id.data[j*4+3]=255; }
+  tx.putImageData(id,0,0); $('tEmpty').hidden=true;
+  for (const fr of ['tFrame','aFrame','cFrame']) $(fr).style.aspectRatio=`${W}/${H}`;
+  cv.width=W*2; cv.height=H*2;
+}
+function drawAnalysis(){
+  const S=2; aCv.width=W*S; aCv.height=H*S; const x=aCv.getContext('2d');
+  x.fillStyle='#ece6d6'; x.fillRect(0,0,aCv.width,aCv.height);
+  x.globalAlpha=0.28; x.drawImage(tCv,0,0,aCv.width,aCv.height); x.globalAlpha=1;
+  x.lineCap='round'; x.lineJoin='round'; x.strokeStyle='rgba(27,29,34,.17)';
+  for(const ws of plan.washStrokes){ x.strokeStyle=ws.dry?'rgba(40,110,150,.30)':'rgba(27,29,34,.17)';
+    for(let i=0;i<ws.pts.length-1;i++){ const a=ws.pts[i], b=ws.pts[i+1]; x.lineWidth=Math.max(2,(a[2]+b[2])*S*0.85); x.beginPath(); x.moveTo(a[0]*S,a[1]*S); x.lineTo(b[0]*S,b[1]*S); x.stroke(); } }
+  x.strokeStyle='rgba(27,29,34,.55)'; x.lineWidth=1;
+  for(const w of plan.washes){ x.beginPath(); x.arc(w.x*S,w.y*S,w.rho*S,0,Math.PI*2); x.stroke(); }
+  x.lineCap='round'; x.lineJoin='round'; x.strokeStyle='rgba(168,50,42,.9)';
+  for(const st of plan.strokes){
+    if(st.pts.length===1){ const p=st.pts[0]; x.fillStyle='rgba(168,50,42,.9)'; x.beginPath(); x.arc(p[0]*S,p[1]*S,Math.max(1,p[2]*S/2),0,Math.PI*2); x.fill(); continue; }
+    for(let i=0;i<st.pts.length-1;i++){ const a=st.pts[i], b=st.pts[i+1]; x.lineWidth=Math.max(1,(a[2]+b[2])*S/2); x.beginPath(); x.moveTo(a[0]*S,a[1]*S); x.lineTo(b[0]*S,b[1]*S); x.stroke(); } }
+}
+
+// ---------------- brush calibration (blank paper) ----------------
+const CAL_SIZES=[0.5,1,2,3], CAL_DURS=[0.05,0.2,0.6,1.5], CAL_C=3, WATER=(+P.get('water')||1.2), WV=(+P.get('wv')||1.5), FLOW=P.has('flow')?+P.get('flow'):0, FLOW_STEPS=(+P.get('fs')||110), STREAK=P.has('streak')?+P.get('streak'):0.7,
+  DRY_R=(+P.get('dr')||0.9), DRY_K=(+P.get('dk')||1.4), DRY_W=0.0015, DRY_STREAK=(P.has('ds')?+P.get('ds'):0.85), KDD=(+P.get('kdd')||1.5);
+function* calibrate(R){
+  const side=Math.max(80,Math.min(200,Math.round(R*14)));
+  const s=makeSim(side,side,424242); const table=[];
+  let done=0;
+  for(const sz of CAL_SIZES){ const row=[];
+    for(const dur of CAL_DURS){
+      simClear(s); simBegin(s);
+      const n=Math.round(dur*SPS), amt=POUR*Math.min(sz*sz,2.5);
+      for(let k=0;k<n+400;k++){ simStep(s,k<n?[side/2,side/2,amt,CAL_C]:null,R*sz,0); if(k%SPF===SPF-1){ yield; simBegin(s); } }
+      const D=simDensity(s); let a=0; for(let i=0;i<D.length;i++) if(D[i]>0.15) a++;
+      const req=Math.sqrt(a/Math.PI); let ds=0, dc=0; const rin=Math.max(1,0.7*req);
+      for(let y=0;y<side;y++) for(let x=0;x<side;x++){ if(Math.hypot(x+0.5-side/2,y+0.5-side/2)<=rin){ ds+=Dn(D[y*side+x]); dc++; } }
+      row.push({dur,r:req,dm:dc?ds/dc:0.05});
+      done++; progress.text=`Calibrating the brush (${done} of ${CAL_SIZES.length*CAL_DURS.length})`; progress.frac=0;
+      yield; simBegin(s);
+      if (row[row.length-1].r>side*0.42) break; }
+    table.push({sz,row}); }
+  const lines=[];
+  for(const sz of CAL_SIZES){
+    simClear(s); simBegin(s);
+    const x0=side*0.2, x1=side*0.8, n=Math.max(2,Math.round((x1-x0)/WV)), amt=POUR*Math.min(sz*sz,2.5)*WATER;
+    for(let k=0;k<n+400;k++){ simStep(s,k<n?[x0+(x1-x0)*k/n,side/2,amt,CAL_C/WATER]:null,R*sz,0); if(k%SPF===SPF-1){ yield; simBegin(s); } }
+    const D=simDensity(s), xm=Math.round(side/2); let cnt=0;
+    for(let xx=xm-3;xx<=xm+3;xx++) for(let y=0;y<side;y++) if(D[y*side+xx]>0.15) cnt++;
+    const r=Math.max(0.5,cnt/7/2), rin=Math.max(1,0.7*r); let ds=0, dc=0;
+    for(let xx=xm-3;xx<=xm+3;xx++) for(let y=0;y<side;y++) if(Math.abs(y+0.5-side/2)<=rin){ ds+=Dn(D[y*side+xx]); dc++; }
+    lines.push({sz,r,dm:dc?ds/dc:0.05});
+    progress.text=`Calibrating the broad brush (${lines.length} of ${CAL_SIZES.length})`; progress.frac=0;
+    yield; simBegin(s);
+    if (r>side*0.42) break; }
+  freeSim(s);
+  return {discs:table,lines}; }
+function strokeParams(rt,lines){
+  const f=lines[0], l=lines[lines.length-1];
+  if(rt<=f.r) return {size:Math.max(0.25,f.sz*rt/f.r),dm:f.dm};
+  if(rt>=l.r) return {size:Math.min(4,l.sz*rt/l.r),dm:l.dm};
+  for(let i=0;i<lines.length-1;i++){ const a=lines[i], b=lines[i+1];
+    if(rt>=a.r&&rt<=b.r){ const u=(rt-a.r)/Math.max(1e-6,b.r-a.r); return {size:Math.exp(Math.log(a.sz)+u*(Math.log(b.sz)-Math.log(a.sz))),dm:a.dm+u*(b.dm-a.dm)}; } }
+  return {size:l.sz,dm:l.dm}; }
+function washParams(rho,R,table){
+  const target=Math.max(1,0.85*rho); let best=null, bs=1e9;
+  for(const e of table){ const rmin=e.row[0].r, rmax=e.row[e.row.length-1].r;
+    const cover=target<rmin?Math.log(rmin/target):(target>rmax?Math.log(target/rmax):0);
+    const score=cover*2+0.25*Math.abs(Math.log(Math.max(0.1,e.sz*R*1.5)/target));
+    if(score<bs){ bs=score; best=e; } }
+  const row=best.row; let dur=row[0].dur, dm=row[0].dm;
+  if(target>=row[row.length-1].r){ dur=row[row.length-1].dur; dm=row[row.length-1].dm; }
+  else if(target>row[0].r){ for(let i=0;i<row.length-1;i++){ const a=row[i], b=row[i+1]; if(target>=a.r&&target<=b.r){ const u=(target-a.r)/Math.max(1e-6,b.r-a.r); dur=Math.exp(Math.log(a.dur)+u*(Math.log(b.dur)-Math.log(a.dur))); dm=a.dm+u*(b.dm-a.dm); break; } } }
+  return {size:best.sz,seconds:dur,dm}; }
+
+// ---------------- execution ----------------
+const progress={text:'',frac:0};
+let jitter=rng(1), running=false;
+const WASH_PAUSE=20, SETTLE_A=900, SETTLE_B=540, STROKE_PAUSE=25;
+function stepsEstimate(pl){ let n=0;
+  for(const ws of (pl.washStrokes||[])){ let L=0; for(let i=1;i<ws.pts.length;i++) L+=Math.hypot(ws.pts[i][0]-ws.pts[i-1][0],ws.pts[i][1]-ws.pts[i-1][1]); n+=Math.max(2,Math.ceil(L/(ws.dry?DS:WV)))+(FLOW>0?FLOW_STEPS:0)+(ws.dry?8:0); }
+  for(const w of pl.washes) n+=Math.max(1,Math.round(w.seconds*SPS))+WASH_PAUSE;
+  n+=SETTLE_A; for(const st of pl.strokes){ let L=0; for(let i=1;i<st.pts.length;i++) L+=Math.hypot(st.pts[i][0]-st.pts[i-1][0],st.pts[i][1]-st.pts[i-1][1]); n+=Math.max(6,Math.ceil(L/DS))+STROKE_PAUSE; } return n+SETTLE_B; }
+function* execute(s,pl,seed){
+  jitter=rng(seed^0x9e37); simClear(s); simBegin(s);
+  const R=brushR(s.w,s.h), total=stepsEstimate(pl); let cnt=0;
+  const pace=()=>{ cnt++; progress.frac=Math.min(1,cnt/total); return cnt%SPF===0; };
+  s.gx=0; s.gy=0; const ALL=pl.washStrokes||[], WS=ALL.filter(w=>!w.dry), DRYS=ALL.filter(w=>w.dry);
+  for(let wi=0;wi<WS.length;wi++){
+    const q=WS[wi].pts; progress.text=`Painting broad strokes: ${wi+1} of ${WS.length}`;
+    for(let i=0;i<q.length-1;i++){ const a=q[i], b=q[i+1], L=Math.hypot(b[0]-a[0],b[1]-a[1]), m=Math.max(1,Math.ceil(L/WV));
+      const dir=[(b[0]-a[0])/(L||1),-(b[1]-a[1])/(L||1)];
+      for(let t=0;t<m;t++){ const u=t/m, sz=a[5]+(b[5]-a[5])*u, ink=a[6]+(b[6]-a[6])*u, dry=a[4]+(b[4]-a[4])*u;
+        simStep(s,[a[0]+(b[0]-a[0])*u,s.h-(a[1]+(b[1]-a[1])*u),POUR*Math.min(sz*sz,2.5)*WATER,ink],R*sz,dry,dir,[STREAK,Math.max(1.5,0.22*R*sz),wi*7.31]);
+        if(pace()){ yield; if(!running) return; simBegin(s); } } }
+    if(FLOW>0){ const f=q[0], e=q[q.length-1], dx=e[0]-f[0], dy=e[1]-f[1], mm=Math.hypot(dx,dy)||1;
+      s.gx=dx/mm*FLOW; s.gy=-dy/mm*FLOW;                                      // optional: tilt the paper along the stroke
+      for(let k=0;k<FLOW_STEPS;k++){ simStep(s,null); if(pace()){ yield; if(!running) return; simBegin(s); } }
+      s.gx=0; s.gy=0; } }
+  for(let wi=0;wi<pl.washes.length;wi++){
+    const w=pl.washes[wi]; const n=Math.max(1,Math.round(w.seconds*SPS)), amt=POUR*Math.min(w.size*w.size,2.5), rad=R*w.size, rJ=3*w.size*Math.min(s.w,s.h)/240;
+    progress.text=`Painting washes: ${wi+1} of ${pl.washes.length}`;
+    const wdx=w.dx||0, wdy=w.dy||0, wdir=[wdx,-wdy], wl=Math.hypot(wdx,wdy)||1;
+    for(let k=0;k<n;k++){ const u=n>1?2*k/(n-1)-1:0, x=w.x+wdx*u+(jitter()+jitter()+jitter()-1.5)*rJ, y=w.y+wdy*u+(jitter()+jitter()+jitter()-1.5)*rJ;
+      simStep(s,[x,s.h-y,amt,w.ink],rad,0,[wdir[0]/wl,wdir[1]/wl],[0,1,0]); if(pace()){ yield; if(!running) return; simBegin(s); } }
+    for(let k=0;k<WASH_PAUSE;k++){ simStep(s,null); if(pace()){ yield; if(!running) return; simBegin(s); } } }
+  progress.text='Letting the washes settle';
+  for(let k=0;k<SETTLE_A;k++){ simStep(s,null); if(pace()){ yield; if(!running) return; simBegin(s); } }
+  for(let di=0;di<DRYS.length;di++){                                           // dry brush: little water, so the bristle marks and white gaps stay
+    const q=DRYS[di].pts; progress.text=`Painting dry-brush strokes: ${di+1} of ${DRYS.length}`;
+    for(let i=0;i<q.length-1;i++){ const a=q[i], b=q[i+1], L=Math.hypot(b[0]-a[0],b[1]-a[1]), m=Math.max(1,Math.ceil(L/DS));
+      const dir=[(b[0]-a[0])/(L||1),-(b[1]-a[1])/(L||1)];
+      for(let t=0;t<m;t++){ const u=t/m, rho=a[2]+(b[2]-a[2])*u, tone=a[3]+(b[3]-a[3])*u, dv=a[4]+(b[4]-a[4])*u;
+        const rad=Math.max(1.5,rho*DRY_R), D=Dn(tone)/Math.sqrt(Math.max(1,a[7]||1)), C=D*DS/(DRY_K*rad*DRY_W)/(1-0.5*dv)*KDD;
+        simStep(s,[a[0]+(b[0]-a[0])*u,s.h-(a[1]+(b[1]-a[1])*u),DRY_W,C],rad,dv,dir,[DRY_STREAK,Math.max(1.2,0.12*rad),di*7.31+3,1]);
+        if(pace()){ yield; if(!running) return; simBegin(s); } } }
+    for(let k=0;k<8;k++){ simStep(s,null); if(pace()){ yield; if(!running) return; simBegin(s); } } }
+  for(let si=0;si<pl.strokes.length;si++){
+    const pts=pl.strokes[si].pts; progress.text=`Drawing strokes: ${si+1} of ${pl.strokes.length}`;
+    const stamp=(x,y,wd,D,dry,dir)=>{ const rad=Math.max(0.9,0.5*wd*KR), a=Math.min(0.03,Math.max(0.0022,0.0012*rad*rad)), C=D*DS/(0.64*rad*a)*KD*(1.05+2.2/Math.pow(Math.max(wd,1),1.4)); simStep(s,[x,s.h-y,a,C],rad,dry,dir,wd>=3&&dir?[0.5,Math.max(1.2,0.3*rad),si*5.1]:null); return pace(); };
+    if(pts.length===1){ const p=pts[0]; for(let k=0;k<8;k++){ if(stamp(p[0],p[1],p[2],p[3]*1.2,0)){ yield; if(!running) return; simBegin(s); } } }
+    else for(let q=0;q<pts.length-1;q++){ const a=pts[q], b=pts[q+1]; const L=Math.hypot(b[0]-a[0],b[1]-a[1]), m=Math.max(1,Math.ceil(L/DS));
+      const ldir=[(b[0]-a[0])/(L||1),-(b[1]-a[1])/(L||1)];
+      for(let t=0;t<m;t++){ const u=t/m; if(stamp(a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u,a[2]+(b[2]-a[2])*u,a[3]+(b[3]-a[3])*u,a[4]+(b[4]-a[4])*u,ldir)){ yield; if(!running) return; simBegin(s); } } }
+    for(let k=0;k<STROKE_PAUSE;k++){ simStep(s,null); if(pace()){ yield; if(!running) return; simBegin(s); } } }
+  progress.text='Final settling';
+  for(let k=0;k<SETTLE_B;k++){ simStep(s,null); if(pace()){ yield; if(!running) return; simBegin(s); } }
+}
+
+// ---------------- driver ----------------
+const btn={run:$('run'),stop:$('stop'),replay:$('replay'),export:$('export'),detail:$('detail')};
+let job=null, lastShown=0, result='';
+function setBusy(b){ btn.run.disabled=b||!T; btn.stop.disabled=!b; btn.replay.disabled=b||!sim||!plan; btn.export.disabled=b||!plan; btn.detail.disabled=b; }
+function similarity(){ const D=simDensity(sim); let e=0,e0=0; for(let j=0;j<D.length;j++){ const d=D[j]-T[j]; e+=d>0?d*d*2:d*d; e0+=T[j]*T[j]; } return e0>0?1-e/e0:0; }
+function updateStatus(){ statusEl.textContent=progress.text; meter.style.width=`${progress.frac*100}%`; }
+function finish(ok){
+  running=false; job=null; if(sim) simShow(sim);
+  if (ok){ const s=similarity(); statusEl.textContent=`Finished: ${plan.washStrokes.length} broad strokes (${plan.washStrokes.filter(w=>w.dry).length} dry), ${plan.washes.length} pours and ${plan.strokes.length} lines. By the pixel-by-pixel measure the copy is ${(Math.max(0,s)*100).toFixed(0)}% of the way to the original, which rewards matching broad tone and under-rewards fine lines.`; meter.style.width='100%'; }
+  else statusEl.textContent='Stopped.';
+  setBusy(false); btn.run.textContent='Copy again'; }
+function* fullJob(){
+  const R=brushR(W,H), key=`${W}x${H}`;
+  if(sim){ freeSim(sim); sim=null; }
+  paperSeed=(Math.random()*1e9)|0; sim=makeSim(W,H,paperSeed);
+  if(calKey!==key||!calTable){ calTable=yield* calibrate(R); calKey=key; if(!running) return false; }
+  for(const w of plan.washes){ const p=washParams(w.rho,R,calTable.discs); w.size=p.size; w.seconds=p.seconds; w.ink=Math.max(0.15,Math.min(20,CAL_C*0.8*Dn(w.tone)/Math.max(0.02,p.dm))); }
+  for(const ws of plan.washStrokes) for(const q of ws.pts){ const p=strokeParams(0.85*q[2],calTable.lines); q[5]=p.size; q[6]=Math.max(0.05,Math.min(20,(CAL_C/WATER)*0.8*Dn(q[3])/Math.sqrt(Math.max(1,q[7]||1))/Math.max(0.02,p.dm))); }
+  yield* execute(sim,plan,paperSeed);
+  return running; }
+function drive(gen,onDone){
+  job={gen,onDone};
+  const tick=()=>{ if(!job) return; const r=job.gen.next(); updateStatus();
+    if(r.done){ const ok=r.value!==false&&running; job.onDone(ok); return; }
+    if(sim&&performance.now()-lastShown>90){ simShow(sim); lastShown=performance.now(); }
+    requestAnimationFrame(tick); };
+  requestAnimationFrame(tick); }
+function analyseNow(){
+  plan=buildPlan(T,W,H,Tf,FW,FH); drawAnalysis();
+  const nd=plan.washStrokes.filter(w=>w.dry).length;
+  statusEl.textContent=`Found ${nd} dry-brush strokes, ${plan.washStrokes.length-nd} wet strokes, ${plan.washes.length} round pours and ${plan.strokes.length} lines (analysis took ${plan.ms} ms). Press Start copying.`;
+  btn.run.disabled=false; btn.export.disabled=false; btn.replay.disabled=true; meter.style.width='0'; btn.run.textContent='Start copying'; }
+function loadImage(img){
+  loadedImg=img; if(sim){ freeSim(sim); sim=null; } calTable=null; prepareTarget(img); analyseNow(); }
+$('file').addEventListener('change',e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f) return; srcName=f.name.replace(/\.[^.]+$/,'');
+  const url=URL.createObjectURL(f), img=new Image();
+  img.onload=()=>{ URL.revokeObjectURL(url); loadImage(img); };
+  img.onerror=()=>{ statusEl.textContent='That file could not be read as an image. Try a JPEG or PNG.'; };
+  img.src=url; });
+btn.detail.addEventListener('change',()=>{ SHORT=+btn.detail.value; if(loadedImg) loadImage(loadedImg); });
+btn.run.addEventListener('click',()=>{ if(!plan) return; running=true; setBusy(true); drive(fullJob(),finish); });
+btn.stop.addEventListener('click',()=>{ running=false; });
+btn.replay.addEventListener('click',()=>{ if(!sim||!plan) return; running=true; setBusy(true); drive(execute(sim,plan,paperSeed),finish); });
+let downloads=null;
+(async()=>{ try{ if(window.claude&&window.claude.use) downloads=await window.claude.use('downloads'); }catch(e){ downloads=null; } })();
+function exportData(){
+  const sc=Math.min(W,H), r4=v=>+v.toFixed(4), r3=v=>+v.toFixed(3);
+  const washes=plan.washes.map(w=>({x:r4(w.x/W),y:r4(w.y/H),radius:r4(w.rho/sc),size:w.size,seconds:r3(w.seconds||0),ink:r3(w.ink||0)}));
+  const washStrokes=plan.washStrokes.map(s=>({dry:!!s.dry,points:s.pts.map(p=>[r4(p[0]/W),r4(p[1]/H),r4(p[2]/sc),r3(p[3]),r3(p[4])])}));
+  const strokes=plan.strokes.map(s=>({points:s.pts.map(p=>[r4(p[0]/W),r4(p[1]/H),r4(p[2]/sc),r3(p[3]),r3(p[4])])}));
+  const seq=[]; let px=0,py=0;
+  const row=(x,y,w,ink,dry,pd,pu)=>{ seq.push([r4((x-px)/sc),r4((y-py)/sc),r4(w/sc),r3(ink),r3(dry),pd,pu,0]); px=x; py=y; };
+  for(const ws of plan.washStrokes) ws.pts.forEach((p,i)=>{ const last=i===ws.pts.length-1; row(p[0],p[1],2*p[2],p[3],p[4],last?0:1,last?1:0); });
+  for(const w of plan.washes) row(w.x,w.y,2*w.rho,w.tone,0,0,1);
+  for(const s of plan.strokes){ s.pts.forEach((p,i)=>{ const last=i===s.pts.length-1; row(p[0],p[1],p[2],1-Math.exp(-1.05*p[3]),p[4],last?0:1,last?1:0); }); }   // lines: convert deposit density to the tone it adds, so the ink column is a tone everywhere
+  if(seq.length) seq[seq.length-1][7]=1;
+  return JSON.stringify({format:'splashed-ink-plan/v2',source:srcName,aspect:r4(W/H),paperSeed,sim:{width:W,height:H,stepsPerSecond:SPS},
+    note:'Strokes are inferred from the final image. Draw order and direction are heuristics. Dryness is measured from gaps in the original where they show, plus an assumed fade toward each tip.',
+    brush:{baseRadius:'0.05 x short side',radius:'baseRadius x size',waterPerStep:'0.06 x min(size^2, 2.5) for washes'},
+    sequenceColumns:['dx','dy','width','ink','dry','pen_down','pen_up','end'],sequenceUnits:'dx, dy and width are fractions of the short side. Broad wash strokes come first (width is twice the local radius), then round pours as single-point strokes whose width is the disc diameter, then the lines.',
+    washStrokes,washes,strokes,sequence:seq},null,1); }
+btn.export.addEventListener('click',async()=>{
+  const data=exportData();
+  if(downloads){ try{ await downloads.save({filename:`${srcName}-plan.json`,data}); statusEl.textContent='Exported.'; return; }catch(e){ if(e&&e.code==='declined'){ statusEl.textContent='Export cancelled.'; return; } } }
+  try{ const bl=new Blob([data],{type:'application/json'}), a=document.createElement('a'); a.href=URL.createObjectURL(bl); a.download=`${srcName}-plan.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); statusEl.textContent='Exported.'; return; }catch(e){}
+  try{ await navigator.clipboard.writeText(data); statusEl.textContent='Downloads are not available here, so the plan was copied to the clipboard as JSON.'; }
+  catch(e){ statusEl.textContent='Export is not available in this view.'; } });
+
+window.__mc={ get plan(){return plan;}, get size(){return [W,H];}, get running(){return !!job;},
+  pump(ms){ const t0=performance.now(); while(job&&performance.now()-t0<ms){ const r=job.gen.next(); updateStatus(); if(r.done){ const ok=r.value!==false&&running; const d=job; job=null; d.onDone(ok); } } if(sim) simShow(sim); return !!job; },
+  test(w,h,pl){ if(sim){ freeSim(sim); } W=w; H=h; T=new Float32Array(w*h); plan=pl; cv.width=w*2; cv.height=h*2; sim=makeSim(w,h,7); const R=brushR(w,h);
+    pl.washStrokes=pl.washStrokes||[]; for(const x of pl.washes){ x.ink=x.ink||0.8; } running=true; job={gen:execute(sim,pl,7),onDone:()=>{running=false;}}; },
+  get T(){ return Array.from(T); }, density(){ return sim?Array.from(simDensity(sim)):null; }, exportJson(){ return exportData(); } };
+})();
+</script>
+</body>
+</html>

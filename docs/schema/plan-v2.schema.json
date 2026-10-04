@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Splashed Ink plan v2",
+  "description": "What Machine Copy extracts from a painting: broad wash strokes, round pours, and lines with measured width. See docs/DATA_FORMAT.md.",
+  "type": "object",
+  "required": ["format", "source", "aspect", "paperSeed", "sim", "sequenceColumns", "washStrokes", "washes", "strokes", "sequence"],
+  "properties": {
+    "format": { "const": "splashed-ink-plan/v2" },
+    "source": { "type": "string", "description": "Name of the image the plan was extracted from (file name without extension)." },
+    "aspect": { "type": "number", "exclusiveMinimum": 0, "description": "Width divided by height of the analysed image." },
+    "paperSeed": { "type": "integer", "minimum": 0, "description": "Seed of the simulated paper the copy was painted on." },
+    "sim": {
+      "type": "object",
+      "required": ["width", "height", "stepsPerSecond"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "stepsPerSecond": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "note": { "type": "string" },
+    "brush": { "type": "object" },
+    "sequenceColumns": { "const": ["dx", "dy", "width", "ink", "dry", "pen_down", "pen_up", "end"] },
+    "sequenceUnits": { "type": "string" },
+    "washStrokes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dry", "points"],
+        "properties": {
+          "dry": { "type": "boolean", "description": "true: dragged with little water so bristle marks and gaps stay. false: laid as wet ink." },
+          "points": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/point5" },
+            "description": "[x, y, radius, tone, dry] with x, y as fractions of the width and height, radius as a fraction of the short side, tone 0-1, dry 0-1." }
+        }
+      }
+    },
+    "washes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["x", "y", "radius", "size", "seconds", "ink"],
+        "properties": {
+          "x": { "type": "number" }, "y": { "type": "number" },
+          "radius": { "type": "number", "minimum": 0, "description": "Radius of the area this pour covers, as a fraction of the short side." },
+          "size": { "type": "number", "minimum": 0, "description": "Brush radius multiplier." },
+          "seconds": { "type": "number", "minimum": 0, "description": "How long the pour is held, in simulation seconds." },
+          "ink": { "type": "number", "minimum": 0, "description": "Ink concentration handed to the brush. A simulation parameter that can exceed 1; it is not a tone." }
+        }
+      }
+    },
+    "strokes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["points"],
+        "properties": {
+          "points": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/point5" },
+            "description": "[x, y, width, density, dry]. width is a fraction of the short side. density is the ink deposit density the stroke adds, not a tone (tone = 1 - exp(-1.05 * density))." }
+        }
+      }
+    },
+    "sequence": {
+      "type": "array",
+      "description": "Every wash stroke, pour and line in painting order as a stroke-5 style sequence with width, ink and dryness added.",
+      "items": { "type": "array", "minItems": 8, "maxItems": 8, "items": { "type": "number" } }
+    }
+  },
+  "$defs": {
+    "point5": { "type": "array", "minItems": 5, "maxItems": 5, "items": { "type": "number" } }
+  }
+}

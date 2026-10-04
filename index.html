@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Splashed Ink</title>
+<style>
+  :root{--paper:#ece6d6;--ink:#1b1d22;--soft:#4a4c52;--seal:#a8322a;--line:rgba(27,29,34,.18);color-scheme:light dark}
+  @media (prefers-color-scheme:dark){:root{--paper:#17181b;--ink:#ece6d6;--soft:#b9b3a6;--line:rgba(236,230,214,.2)}}
+  body{margin:0;background:var(--paper);color:var(--ink);font:1.2rem/1.55 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif}
+  main{max-width:38rem;margin:0 auto;padding:3rem 1.4rem 4rem}
+  h1{font-weight:500;font-size:clamp(2.8rem,10vw,4.2rem);line-height:.95;margin:0 0 1rem;letter-spacing:-.01em}
+  p{margin:0 0 1rem;color:var(--soft)} p.lede{color:var(--ink)}
+  ul{list-style:none;padding:0;margin:1.8rem 0;border-top:1px solid var(--line)}
+  li{border-bottom:1px solid var(--line);padding:1rem 0}
+  li a{color:var(--ink);font-size:1.35rem;text-decoration-color:var(--seal);text-underline-offset:.2em} li a:focus-visible,a:focus-visible{outline:2px solid var(--seal);outline-offset:3px}
+  li span{display:block;color:var(--soft);font-size:1.05rem}
+  small{display:block;color:var(--soft);font-size:.95rem;margin-top:2rem}
+</style>
+</head>
+<body>
+<main>
+  <h1>Splashed Ink</h1>
+  <p class="lede">Browser tools for painting splashed ink on a simulated sheet of paper, and for studying what changes when a machine is your painting partner and the medium pushes back.</p>
+  <ul>
+    <li><a href="apps/splashed-ink/">Splashed Ink</a><span>Pour, tilt, pass the paper to a partner. Six friction settings, recorded sessions you can replay.</span></li>
+    <li><a href="apps/machine-copy/">Machine Copy</a><span>Load an ink painting and watch the simulator copy it with wet washes, dry-brush strokes and lines of measured width.</span></li>
+  </ul>
+  <p>Open Splashed Ink on a phone for tilt. The documentation, data formats and the code are in the repository's README and <code>docs</code> folder.</p>
+  <small>An independent project. Not affiliated with the MIT Media Lab or its Future Sketches group.</small>
+</main>
+</body>
+</html>
