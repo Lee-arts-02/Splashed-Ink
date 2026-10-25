@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Splashed Ink motif annotations v1",
+  "type": "object",
+  "required": [
+    "format",
+    "motifs"
+  ],
+  "properties": {
+    "format": {
+      "const": "splashed-ink-motif-annotations/v1"
+    },
+    "note": {
+      "type": "string"
+    },
+    "motifs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "accession",
+          "label",
+          "box"
+        ],
+        "properties": {
+          "accession": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "zh": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "box": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "x0, y0, x1, y1 as fractions of the work's image."
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Splashed Ink motif library v1",
+  "description": "Things painters made out of ink (a swallow, a fish, an outlined rock), boxed by hand in public-domain paintings and read by Machine Copy. Each motif holds the lines and dots drawn around its blot, in the blot's LobeKit frame.",
+  "type": "object",
+  "required": [
+    "format",
+    "motifs"
+  ],
+  "properties": {
+    "format": {
+      "const": "splashed-ink-motifs/v1"
+    },
+    "note": {
+      "type": "string"
+    },
+    "lineColumns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "motifs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "label",
+          "f",
+          "lines",
+          "dots",
+          "painting"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "zh": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "wash",
+              "line",
+              "manual"
+            ],
+            "description": "wash or line: read from a painting by Machine Copy. manual: key strokes traced by hand from a painting manual, in its drawing order."
+          },
+          "blotShare": {
+            "type": "number",
+            "description": "How much of the box the blot covers."
+          },
+          "f": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 19,
+            "maxItems": 19,
+            "description": "LobeKit features of the blot (see lobes-v1)."
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              }
+            },
+            "description": "Lines, most important first: [u, v, width] in the blot's frame, as in lobes-v1."
+          },
+          "dots": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "description": "Small dark marks: [u, v, radius in half-widths]."
+          },
+          "painting": {
+            "type": "object",
+            "required": [
+              "title",
+              "license"
+            ],
+            "properties": {
+              "accession": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "artist": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "license": {
+                "type": "string"
+              },
+              "why": {
+                "type": "string"
+              }
+            }
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "For each line, the part it draws (beak, eye, head, ...)."
+          },
+          "sketch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many of the first lines make the pale first sketch."
+          }
+        }
+      }
+    }
+  }
+}

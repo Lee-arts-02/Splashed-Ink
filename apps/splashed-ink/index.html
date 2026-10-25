@@ -179,6 +179,7 @@ button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid va
   <div class="card">
     <h2 id="sumTitle">Session saved</h2>
     <dl class="stats" id="sumStats"></dl>
+    <p class="blurb" id="sumReads" hidden></p>
     <div class="row"><button class="btn primary" id="sumReplay" type="button">Replay it</button><button class="btn" id="sumExport" type="button">Export</button><button class="btn" id="sumClose" type="button">New sheet</button></div>
   </div>
 </div>
@@ -406,12 +407,12 @@ function paperMaps(){ density(); const px=lastPx, k=Math.max(1,Math.round(Math.m
 const r3=v=>Math.round(v*1000)/1000, r4=v=>Math.round(v*10000)/10000;
 const clampN=(v,a,b)=>Math.max(a,Math.min(b,Number.isFinite(+v)?+v:a));
 const E = {tick:0, rng:rng32(1), pointers:new Map(), userG:{x:0,y:0}, g:{x:0,y:0}, gv:{x:0,y:0}, gf:{x:0,y:0},
-  C:1, Cai:1, aiTurn:false, aiTilt:null, actor:null, steps:STEPS, settings:{...DEFAULTS}, onPartnerDone:null, tool:'pour', aiTool:'pour', strokeSeed:0};
+  C:1, Cai:1, aiTurn:false, aiTilt:null, actor:null, steps:STEPS, settings:{...DEFAULTS}, onPartnerDone:null, tool:'pour', aiTool:'pour', strokeSeed:0, aiLight:false};
 const bArr=new Float32Array(MAXS*4), bArr2=new Float32Array(MAXS*4), bArr3=new Float32Array(MAXS*4);
 const sm01=(a,b,x)=>{ const t=Math.max(0,Math.min(1,(x-a)/(b-a))); return t*t*(3-2*t); };
 const Dn=t=>-Math.log(1-Math.min(Math.max(t,0),0.97))/1.05;      // ink deposit density that shows as tone t
 function resetEngine(seed,settings){ E.tick=0; E.rng=rng32(seed); E.pointers.clear(); E.userG={x:0,y:0}; E.g={x:0,y:0}; E.gv={x:0,y:0}; E.gf={x:0,y:0};
-  E.C=1; E.Cai=1; E.aiTurn=false; E.aiTilt=null; E.actor=null; E.steps=STEPS; E.settings={...settings}; E.onPartnerDone=null; E.tool=TOOLS[userRole(E.settings.roles)][0]; E.aiTool='pour'; E.strokeSeed=0; }
+  E.C=1; E.Cai=1; E.aiTurn=false; E.aiTilt=null; E.actor=null; E.steps=STEPS; E.settings={...settings}; E.onPartnerDone=null; E.tool=TOOLS[userRole(E.settings.roles)][0]; E.aiTool='pour'; E.strokeSeed=0; E.aiLight=false; }
 
 // ---- snapshots (undo and "ask again") ----
 let snapStack=[], snapPool=[], preAI=null;
@@ -433,13 +434,13 @@ const userCount=()=>{ let n=0; for(const q of E.pointers.values()) if(!q.ai) n++
 
 // ---- the partner's hands: gestures become pointer positions, tick by tick ----
 function startActor(gestures){ E.actor={g:gestures, i:0, t:0, len:0, phase:'run', init:false, gap:0, gapInit:false}; }
-function finishActor(){ E.pointers.delete('ai'); E.aiTilt=null; E.actor=null; E.aiTurn=false;
+function finishActor(){ E.pointers.delete('ai'); E.aiTilt=null; E.actor=null; E.aiTurn=false; E.aiLight=false;
   if(E.onPartnerDone){ const f=E.onPartnerDone; E.onPartnerDone=null; f(); } }
 function actorStep(){
   const a=E.actor; if(!a) return;
   const gst=a.g[a.i]; if(!gst){ finishActor(); return; }
   if(a.phase==='run'){
-    if(!a.init){ a.init=true; a.t=0; a.len=Math.max(1,Math.round((gst.seconds||1)*60)); a.gapInit=false;
+    if(!a.init){ a.init=true; a.t=0; a.len=Math.max(1,Math.round((gst.seconds||1)*60)); a.gapInit=false; E.aiLight=gst.type==='outline'&&gst.light===true;   // a light line: the brush only half loaded, for a first sketch
       if((gst.type==='pour'||gst.type==='stroke'||gst.type==='outline')&&E.settings.ink==='unlimited'&&typeof gst.ink==='number') E.Cai=clampN(gst.ink,0,1); }
     if(gst.type==='pour'||gst.type==='stroke'||gst.type==='outline'){
       const pts=gst.type!=='pour'?gst.path:[[gst.x,gst.y],...(gst.path||[])], k=a.len>1?a.t/(a.len-1):0, f=k*(pts.length-1), i=Math.min(pts.length-2,Math.floor(f)), u=pts.length>1?f-i:0;
@@ -451,7 +452,7 @@ function actorStep(){
     a.t++;
     if(a.t>=a.len){ a.phase='gap'; a.t=0; a.gap=(gst.type==='pour'||gst.type==='stroke')?15:gst.type==='outline'?8:(gst.type==='tilt'?24:0); a.gapInit=false; }
   } else {
-    if(!a.gapInit){ a.gapInit=true; E.pointers.delete('ai'); E.aiTilt=null; }
+    if(!a.gapInit){ a.gapInit=true; E.pointers.delete('ai'); E.aiTilt=null; E.aiLight=false; }
     a.t++; if(a.t>=a.gap){ a.i++; a.phase='run'; a.init=false; }
   }
 }
@@ -467,7 +468,7 @@ function engineTick(){
   for(const q of all){ if(q.tool==='pour') continue;
     const dx=(q.x-q.px)*simW, dy=(q.y-q.py)*simH, d=Math.hypot(dx,dy);
     q.sp=q.sp*0.8+d*60*0.2; q.len+=d; q.bd=d; q.bdx=d>0?dx/d:1; q.bdy=d>0?-dy/d:0;
-    const spn=q.sp/simW, C=q.ai?E.Cai:E.C, line=q.tool==='line';
+    const spn=q.sp/simW, C=q.ai?(E.aiLight?Math.min(E.Cai,0.3):E.Cai):E.C, line=q.tool==='line';
     if(line){                                                                   // the outlining brush: a fine tip, dense ink, little water
       const vs=sm01(0.1,1.8,spn), wMax=0.0105*short, wMin=Math.max(1.0,0.003*short);
       q.bw=(wMax+(wMin-wMax)*vs)*Math.max(0.3,Math.min(1.4,0.25+1.05*q.p))*(0.55+0.45*Math.min(1,q.len/(2*wMax)));   // press harder and the tip spreads
@@ -792,16 +793,79 @@ function stemFrom(L,W,H,m,rd,ink){                                              
   const nd=2+Math.floor(rd()*3); for(let k=0;k<nd;k++){ const t=0.2+0.7*rd(), i=Math.min(4,Math.floor(t*5)), A=pts[i], s=k%2?1:-1, d=[[A[0]+s*0.4,A[1]],[A[0]+s*1.4,A[1]-0.9]].map(N); g.push({type:'outline',path:d,seconds:0.3,press:0.5,ink}); }
   return g; }
 LOCAL.reader={label:'Reader (outlines what you splashed)', prev:null, async turn(ctx){ await sleep(600);
-  const m=ctx.paper, rd=Math.random, W=m.cols, H=m.rows; if(!m) return {gestures:[]};
+  const m=ctx.paper, rd=Math.random; if(!m) return {gestures:[]}; const W=m.cols, H=m.rows;
+  const ink=ctx.settings.ink==='unlimited'?0.92:undefined;
+  if(MOT){ const r=await readMotifs(this,ctx,m,rd,ink); if(r){ this.prev=m.tone; return r; } }
   const lobes=readBlots(m,this.prev); this.prev=m.tone;
   if(!lobes.length) return {gestures:[{type:'wait',seconds:1}]};
   lobes.sort((a,b)=>(b.area*(0.3+b.fresh))-(a.area*(0.3+a.fresh)));
   const pick=lobes.slice(0,Math.min(lobes.length,lobes.length>3?3:lobes.length)), g=[];
-  const ink=ctx.settings.ink==='unlimited'?0.92:undefined;
   if(LIB){ const r=borrowOutlines(pick,W,H,rd,ink); if(r.gestures.length) return r; }
   for(const L of pick){ if(g.length>=12) break; g.push(...outlineLobe(L,W,H,rd,{wetFirst:L.wet>0.25&&rd()<0.7,ink})); }
   if(rd()<0.6) g.push(...stemFrom(pick[0],W,H,m,rd,ink));
   return {gestures:g.slice(0,14).map(x=>x.ink===undefined?(({ink,...y})=>y)(x):x),note:'rules (no library loaded)'}; }};
+// ---- reading by motif: what a painter made of a blot like yours, and how they drew it ----
+// MOT is a motif library (data/motifs-v1.json): things painters made out of ink (a swallow, a fish, an outlined rock),
+// boxed by hand in public-domain paintings, each with the lines and dots drawn around its blot. For a blot on the paper the
+// Reader picks a motif whose blot has a similar shape (or, inside claude.ai, asks Claude what the blot could be), then draws
+// that painter's lines stretched into your blot's frame. It works from loose to firm: the first time it reads a blot it only
+// sketches two or three lines in pale ink; when the paper comes back, it commits the reading in dark ink, with the dots.
+let MOT=null;
+function setMotifs(j,from){ if(!j||j.format!=='splashed-ink-motifs/v1'||!Array.isArray(j.motifs)||!j.motifs.length) return false;
+  MOT={motifs:j.motifs.filter(x=>Array.isArray(x.f)&&x.f.length===2*LobeKit.PB+3),from};
+  const n=new Set(MOT.motifs.map(x=>x.painting&&x.painting.accession)).size;
+  LOCAL.reader.label=`Reader (reads your ink as one of ${MOT.motifs.length} motifs from ${n} paintings)`; if(typeof refreshPartners==='function') refreshPartners(); return true; }
+function blobsOf(m,prev){                                                      // whole blots: connected ink, not cut into lobes
+  const {cols:W,rows:H,tone,wet}=m, n=W*H, seen=new Uint8Array(n), out=[];
+  for(let j=0;j<n;j++){ if(seen[j]||tone[j]<=0.12) continue; const st=[j], px=[]; seen[j]=1;
+    while(st.length){ const c=st.pop(); px.push(c); const x=c%W, y=(c/W)|0;
+      for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ const X=x+dx,Y=y+dy; if(X<0||Y<0||X>=W||Y>=H) continue; const i=Y*W+X; if(!seen[i]&&tone[i]>0.12){ seen[i]=1; st.push(i); } } }
+    if(px.length<30) continue;
+    let wt=0,nw=0; for(const c of px){ wt+=wet[c]; if(prev&&tone[c]-prev[c]>0.08) nw++; }
+    out.push({px,fr:LobeKit.frame(px,W,tone),area:px.length,wet:wt/px.length,fresh:prev?nw/px.length:1}); }
+  return out.sort((a,b)=>b.area-a.area); }
+const shapeDist=(a,b)=>{ let s=0; for(let i=0;i<a.length-1;i++){ const d=(a[i]-b[i])*(i===0?1.6:i===a.length-2?0.8:1); s+=d*d; } return Math.sqrt(s); };   // size left out: a fish may be any size on your sheet
+async function claudeLabels(ctx,blobs,W,H){                                    // inside claude.ai: Claude reads, the library draws
+  if(!sampleFn||!ctx.imageBlob) return null; const labels=[...new Set(MOT.motifs.map(x=>x.label))];
+  const list=blobs.map((b,i)=>`${i+1}: around x=${(b.fr.cx/W).toFixed(2)}, y=${(b.fr.cy/H).toFixed(2)}`).join('; ');
+  const prompt=`This is a sheet of rice paper with splashed ink. Ink painters read a splash as something (a bird, a fish, a rock, a leaf) and then draw it out with a few lines. For each blot listed (x and y from 0 to 1, origin top left), say what it could be read as, choosing only from: ${labels.join(', ')}. Choose what the shape suggests, not what is most common. Blots: ${list}. Reply with only JSON: {"readings":[{"blot":1,"label":"..."}]}`;
+  try{ const r=await Promise.race([sampleFn.json(prompt,{images:ctx.imageBlob,modelTier:'default',cache:false}),sleep(25000).then(()=>null)]);
+    const out={}; for(const x of (r&&r.readings)||[]) if(labels.includes(x.label)) out[(x.blot|0)-1]=x.label; return out; }catch(e){ return null; } }
+function motifGestures(mot,fr0,W,H,stage,rd,ink){
+  // keep the motif's own proportions: a bird drawn into a long thin blot stays a bird, sized to the blot's area and turned its way
+  const rt=Math.exp(-mot.f[0]), A=Math.sqrt(fr0.Lh*fr0.hw), fr=mot.kind==='manual'?{...fr0,Lh:A/Math.sqrt(rt),hw:A*Math.sqrt(rt)}:fr0;
+  const N=([x,y])=>[r4(cl01(x/W,0.005,0.995)),r4(cl01(y/H,0.005,0.995))], g=[];
+  const toW=(u,v)=>LobeKit.toWorld(fr,u,v);
+  const lines=mot.lines.map(ln=>{ const pts=ln.map(([u,v,w])=>{ const [x,y]=toW(u,v); return [x,y,w*fr.hw]; }); let len=0; for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]); return {pts,len}; })
+    .filter(l=>l.len>=1.5&&l.pts.some(p=>p[0]>=0&&p[1]>=0&&p[0]<W&&p[1]<H));
+  const k0=mot.sketch||3, take=stage==='sketch'?lines.slice(0,k0):lines.slice(k0,k0+14);      // the first few strokes of the manual's order make the pale sketch
+  for(const l of take){ const step=Math.max(1,Math.ceil(l.pts.length/10)), pts=l.pts.filter((_,i)=>i%step===0||i===l.pts.length-1).slice(0,10), path=pts.map(N); if(path.length<2) continue;
+    const wAvg=pts.reduce((a,p)=>a+p[2],0)/pts.length, o={type:'outline',path,seconds:r3(Math.max(0.35,Math.min(3,l.len/W*(stage==='sketch'?2.4:2.2)))),press:r3(mot.kind==='manual'?cl01(0.18+0.2*wAvg,0.18,0.55):cl01((stage==='sketch'?0.2:0.3)+0.35*wAvg,0.2,1))};
+    if(stage==='sketch') o.light=true; if(ink!==undefined&&stage!=='sketch') o.ink=ink; g.push(o); }
+  if(stage!=='sketch') for(const [u,v,r] of mot.dots.slice(0,10)){ const [x,y]=toW(u,v); if(x<0||y<0||x>=W||y>=H) continue; const d=Math.max(0.4,r*fr.hw*0.6);
+    const o={type:'outline',path:[N([x-d,y-d*0.3]),N([x+d,y+d*0.3])],seconds:0.3,press:0.95}; if(ink!==undefined) o.ink=ink; g.push(o); }
+  return g; }
+async function readMotifs(self,ctx,m,rd,ink){
+  const W=m.cols, H=m.rows, blobs=blobsOf(m,self.mprev); self.mprev=m.tone; self.readings=self.readings||[];
+  if(!blobs.length) return null;
+  const g=[], notes=[], used=new Set();
+  // carry on a reading begun earlier: the same blot, still about the same size
+  for(const rdg of self.readings.filter(x=>x.stage==='sketch')){
+    const b=blobs.find(b=>!used.has(b)&&Math.hypot(b.fr.cx-rdg.cx*W,b.fr.cy-rdg.cy*H)<0.7*Math.max(b.fr.Lh,rdg.Lh*W)&&b.area<2.5*rdg.area*W*H/(rdg.W*rdg.H));
+    if(!b) continue; used.add(b); rdg.stage='firm';
+    g.push(...motifGestures(MOT.motifs[rdg.k],b.fr,W,H,'firm',rd,ink)); notes.push(`committed ${MOT.motifs[rdg.k].label}`); if(g.length>=12) break; }
+  // read new blots, freshest and largest first
+  const fresh=blobs.filter(b=>!used.has(b)&&!self.readings.some(x=>Math.hypot(b.fr.cx-x.cx*W,b.fr.cy-x.cy*H)<0.5*b.fr.Lh)).sort((a,b)=>b.area*(0.3+b.fresh)-a.area*(0.3+a.fresh)).slice(0,2);
+  const asked=fresh.length?await claudeLabels(ctx,fresh,W,H):null;
+  fresh.forEach((b,i)=>{ const f=LobeKit.features(b.fr,Math.min(W,H)), want=asked&&asked[i];
+    const pool=MOT.motifs.map((x,k)=>({k,d:shapeDist(f,x.f)+(want&&x.label!==want?10:0)})).sort((a,c)=>a.d-c.d).slice(0,4);
+    const d0=pool[0].d+0.2, ws=pool.map(p=>Math.exp(-(p.d-pool[0].d)/d0)); let t=rd()*ws.reduce((a,c)=>a+c,0), j=0; while(j<pool.length-1&&(t-=ws[j])>0) j++;
+    const k=pool[j].k, mot=MOT.motifs[k];
+    self.readings.push({k,cx:b.fr.cx/W,cy:b.fr.cy/H,Lh:b.fr.Lh/W,area:b.area,W,H,stage:'sketch'});
+    g.push(...motifGestures(mot,b.fr,W,H,'sketch',rd,ink));
+    notes.push(`read as ${mot.label} (${mot.zh}) from ${mot.painting.title}, ${mot.painting.artist}${want?' (Claude read the blot)':''}`); });
+  if(!g.length) return null;
+  return {gestures:g.slice(0,14),note:notes.join('; ')}; }
 // ---- learning from paintings: borrow how painters outlined the lobes most like yours ----
 // LIB is a lobe library built by Machine Copy from paintings. For each of your lobes, the nearest lobes in the library (by
 // elongation, width profile, tone and size) are found; one of the closest is chosen, and its painter's lines are carried into
@@ -845,6 +909,7 @@ LOCAL.splasher={label:'Splasher (pours for you to read)', async turn(ctx){ await
   if(rd()<0.35) g.push({type:'tilt',dx:r3(rd()*2-1),dy:r3(rd()*2-1),seconds:r3(0.8+rd())});
   return {gestures:g}; }};
 for(const [k,p] of Object.entries(LOCAL)) if(!window.InkPartners[k]) window.InkPartners[k]=p;
+(async()=>{ try{ const r=await fetch(P.get('motifs')||'../../data/motifs-v1.json',{cache:'no-cache'}); if(r.ok) setMotifs(await r.json(),'repository'); }catch(e){} })();
 (async()=>{ try{ const r=await fetch(P.get('lobes')||'../../data/lobes-v1.json',{cache:'no-cache'}); if(r.ok&&setLibrary(await r.json(),'repository')) return; }catch(e){}
   try{ const t=lsGet('splashed-ink:lobes'); if(t) setLibrary(JSON.parse(t),'imported'); }catch(e){} })();
 function snapshotImage(){ const W=480, H=Math.round(480*cv.height/cv.width), c=document.createElement('canvas'); c.width=W; c.height=H; c.getContext('2d').drawImage(cv,0,0,W,H);
@@ -900,7 +965,7 @@ function sanitize(raw,role){
     if(g.type==='pour'){ const secs=clampN(g.seconds,0.3,4), path=Array.isArray(g.path)?g.path.slice(0,8).filter(p=>Array.isArray(p)&&p.length>=2).map(p=>[r4(clampN(p[0],0,1)),r4(clampN(p[1],0,1))]):[];
       const o={type:'pour',x:r4(clampN(g.x,0,1)),y:r4(clampN(g.y,0,1)),seconds:r3(secs),path}; if(typeof g.ink==='number') o.ink=r3(clampN(g.ink,0,1)); out.push(o); total+=secs; }
     else if(g.type==='stroke'||g.type==='outline'){ const path=Array.isArray(g.path)?g.path.slice(0,10).filter(p=>Array.isArray(p)&&p.length>=2).map(p=>[r4(clampN(p[0],0,1)),r4(clampN(p[1],0,1))]):[];
-      if(path.length>=2){ const secs=clampN(g.seconds,0.3,4), o={type:g.type,path,seconds:r3(secs)}; if(g.type==='outline'&&typeof g.press==='number') o.press=r3(clampN(g.press,0.2,1)); if(typeof g.ink==='number') o.ink=r3(clampN(g.ink,0,1)); out.push(o); total+=secs; } }
+      if(path.length>=2){ const secs=clampN(g.seconds,0.3,4), o={type:g.type,path,seconds:r3(secs)}; if(g.type==='outline'&&typeof g.press==='number') o.press=r3(clampN(g.press,0.2,1)); if(g.type==='outline'&&g.light===true) o.light=true; if(typeof g.ink==='number') o.ink=r3(clampN(g.ink,0,1)); out.push(o); total+=secs; } }
     else if(g.type==='tilt'){ const secs=clampN(g.seconds,0.5,3); out.push({type:'tilt',dx:r3(clampN(g.dx,-1,1)),dy:r3(clampN(g.dy,-1,1)),seconds:r3(secs)}); total+=secs; }
     else if(g.type==='wait'){ const secs=clampN(g.seconds,0.5,4); out.push({type:'wait',seconds:r3(secs)}); total+=secs; }
     if(total>(role==='outline'?20:16)) break; }
@@ -996,6 +1061,8 @@ function endAndShow(){ if(!session) return; closePanels(); flushPending(); for(c
   const s=finishSession(); running=false; mode='ended'; const m=s.summary, dl=$('sumStats'); dl.innerHTML='';
   const rows=[['Time',fmtDur(m.seconds)],['Strokes',m.strokes],['Brush strokes',m.brushStrokes||0],['Outlines',m.outlineStrokes||0],['Partner outlines',m.partnerOutlines||0],['Time pouring',fmtDur(m.pourSeconds)],['First stroke after',m.firstStrokeAfterSeconds===null?'-':m.firstStrokeAfterSeconds+' s'],['Median pause',m.medianPauseSeconds===null?'-':m.medianPauseSeconds+' s'],['Undos',m.undos],['Partner turns',m.partnerTurns],['Partner redos',m.partnerRedos],['Words sent',m.wordsSent],['Setting changes',m.settingChanges]];
   for(const [a,b] of rows){ dl.insertAdjacentHTML('beforeend',`<dt>${a}</dt><dd>${b}</dd>`); }
+  const reads=s.events.filter(e=>e.e==='pr'&&typeof e.note==='string'&&/read as/.test(e.note)).flatMap(e=>e.note.split('; ').filter(x=>x.startsWith('read as')));
+  $('sumReads').innerHTML=reads.length?'<b>How your ink was read</b><br>'+reads.map(x=>x.replace(/</g,'&lt;')).join('<br>'):''; $('sumReads').hidden=!reads.length;
   $('sumTitle').textContent=keepRecord?'Session saved':'Session ended'; $('summary').hidden=false; ui.modal=true; }
 $('sumReplay').addEventListener('click',()=>{ $('summary').hidden=true; startReplay(session); });
 $('sumExport').addEventListener('click',async()=>{ report(await saveFile(`splashed-ink-${session.id}.json`,serialize(session))); });
@@ -1057,7 +1124,7 @@ window.__si={ get E(){return E;}, get session(){return session;}, get mode(){ret
   pd(id,x,y,p){ emit('pd',{i:id,x:r4(x),y:r4(y),p:p||0.5}); }, pm(id,x,y,p){ emit('pm',{i:id,x:r4(x),y:r4(y),p:p||0.5}); }, pu(id){ emit('pu',{i:id}); },
   g(x,y){ emit('g',{x:r3(x),y:r3(y)}); }, tool(v){ emit('tl',{v}); }, knob(k,v){ emit('k',{k,v}); }, undo(){ emit('un',{}); }, sheet(s){ emit('sh',{s}); }, pot(c){ emit('pot',{c}); },
   pass(gestures,words){ emit('pa',{partner:'test',words:words||undefined,sees:E.settings.sees}); emit('pg',{gestures}); }, redo(){ emit('rd',{}); },
-  finish(){ return finishSession(); }, draw(){ render(); }, paper(){ const m=paperMaps(); return {cols:m.cols,rows:m.rows,tone:Array.from(m.tone),wet:Array.from(m.wet)}; }, partner(name,ctx){ return window.InkPartners[name].turn(ctx); }, setLibrary(j){ return setLibrary(j,'test'); }, get LIB(){ return LIB; }, snapDepth(){ return snapStack.length; },
+  finish(){ return finishSession(); }, draw(){ render(); }, paper(){ const m=paperMaps(); return {cols:m.cols,rows:m.rows,tone:Array.from(m.tone),wet:Array.from(m.wet)}; }, partner(name,ctx){ return window.InkPartners[name].turn(ctx); }, setLibrary(j){ return setLibrary(j,'test'); }, setMotifs(j){ return setMotifs(j,'test'); }, get LIB(){ return LIB; }, snapDepth(){ return snapStack.length; },
   replayHeadless(s){ if(mode==='live') running=false; const [sw,sh]=s.device.sim; initSim(sw,sh,s.paperSeed); resetEngine(s.seed,sanitizeSettings({roles:'free',...s.settings})); let i=0; const ev=s.events,end=s.endTick;
     for(;;){ while(i<ev.length&&ev[i].t<=E.tick) applyEvent(ev[i++]); if(i>=ev.length&&E.tick>=end) break; engineTick(); } render(); return E.tick; } };
 })();

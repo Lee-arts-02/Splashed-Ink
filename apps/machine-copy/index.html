@@ -597,6 +597,71 @@ function libraryLines(T,W,H){
     for(let i=0;i<p.length;i++){ if(i>0) acc+=Math.hypot(xy[i][0]-xy[i-1][0],xy[i][1]-xy[i-1][1]); if(i===0||i===p.length-1||acc>=2.5){ pts.push([xy[i][0],xy[i][1],w[i]]); acc=0; } }
     out.push({pts,len:L}); }
   return out; }
+// ---------------- motifs: one thing a painter made out of ink, boxed by hand ----------------
+// The marks a painter added to a blot, told apart from the texture of the wash and the weave of silk. The ink map is smoothed
+// first. Outside the blot and along its edge, a mark is a thin stroke darker than its surroundings within 2 cells (claws, a
+// beak, a stem). Inside the wash only what is clearly darker than the wash around it counts (a vein, an eye, a dark wing tip).
+// Compact marks become dots; the rest are thinned to centre lines and joined where they continue each other.
+function boxBlur(a,W,H,r){ const t=new Float32Array(W*H), o=new Float32Array(W*H);
+  for(let y=0;y<H;y++){ let acc=0,c=0; for(let x=-r;x<W;x++){ if(x+r<W){ acc+=a[y*W+x+r]; c++; } if(x-r-1>=0){ acc-=a[y*W+x-r-1]; c--; } if(x>=0) t[y*W+x]=acc/c; } }
+  for(let x=0;x<W;x++){ let acc=0,c=0; for(let y=-r;y<H;y++){ if(y+r<H){ acc+=t[(y+r)*W+x]; c++; } if(y-r-1>=0){ acc-=t[(y-r-1)*W+x]; c--; } if(y>=0) o[y*W+x]=acc/c; } }
+  return o; }
+function motifMarks(T,W,H,blot,dIn,box,ro){
+  const n=W*H, [x0,y0,x1,y1]=box, inBox=j=>{ const x=j%W, y=(j/W)|0; return x>=x0&&x<x1&&y>=y0&&y<y1; }, boxShort=Math.min(x1-x0,y1-y0);
+  const Ts=boxBlur(boxBlur(T,W,H,1),W,H,1), o2=morph(morph(Ts,W,H,2,false),W,H,2,true), mean=boxBlur(Ts,W,H,Math.max(3,ro));
+  const mk=new Uint8Array(n);
+  for(let j=0;j<n;j++){ if(!inBox(j)) continue;
+    mk[j]=(!blot[j]||dIn[j]<=2) ? (Ts[j]-o2[j]>0.09&&Ts[j]>0.22?1:0) : (Ts[j]-mean[j]>0.18&&Ts[j]>0.45?1:0); }
+  dropSmall(mk,W,H,6);
+  // compact components are dots
+  const lab=new Int32Array(n).fill(-1), dots=[]; let nl=0;
+  for(let j=0;j<n;j++){ if(!mk[j]||lab[j]>=0) continue; const st=[j], mem=[]; lab[j]=nl;
+    while(st.length){ const c=st.pop(); mem.push(c); const cx=c%W, cy=(c/W)|0; for(const [dx,dy] of NB){ const X=cx+dx,Y=cy+dy; if(X<0||Y<0||X>=W||Y>=H) continue; const i=Y*W+X; if(mk[i]&&lab[i]<0){ lab[i]=nl; st.push(i); } } }
+    let a=1e9,b=-1e9,c=1e9,d=-1e9,mx=0,my=0; for(const q of mem){ const x=q%W, y=(q/W)|0; a=Math.min(a,x); b=Math.max(b,x); c=Math.min(c,y); d=Math.max(d,y); mx+=x+0.5; my+=y+0.5; }
+    const ext=Math.max(b-a+1,d-c+1);
+    if(ext<=Math.max(4,0.05*boxShort)&&mem.length>=0.35*ext*ext){ let ct=0, dk=0; for(const q of mem){ ct=Math.max(ct,Ts[q]-mean[q]); dk=Math.max(dk,Ts[q]); }
+      if(ct>0.22&&dk>0.55) dots.push([mx/mem.length,my/mem.length,Math.sqrt(mem.length/Math.PI),ct*mem.length]); for(const q of mem) mk[q]=0; }
+    nl++; }
+  const dt=edt(mk,W,H);
+  let paths=traceSkeleton(thin(mk,W,H),W,H).filter(p=>p.length>=2).map(p=>p.map(i=>[(i%W)+0.5,((i/W)|0)+0.5,Math.max(1,2*dt[i]-1)]));
+  paths=joinPaths(paths,3.5,0.55);
+  const lines=[];
+  for(const p of paths){ let L=0; for(let i=1;i<p.length;i++) L+=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]); if(L<5) continue;
+    const xy=smoothSeq(p.map(q=>[q[0],q[1]]),2), w=smoothSeq(p.map(q=>q[2]),3), pts=[]; let acc=0;
+    for(let i=0;i<p.length;i++){ if(i>0) acc+=Math.hypot(xy[i][0]-xy[i-1][0],xy[i][1]-xy[i-1][1]); if(i===0||i===p.length-1||acc>=2.5){ pts.push([xy[i][0],xy[i][1],w[i]]); acc=0; } }
+    lines.push({pts,len:L}); }
+  dots.sort((a,b)=>b[3]-a[3]);                                                   // the strongest few: an eye, not every speck
+  return {lines,dots:dots.slice(0,8).map(d=>d.slice(0,3))}; }
+// For the box `inner` (fractions of the current image): the blot is the wash inside it (or, for a motif drawn mostly in line,
+// the darker ink), put in its LobeKit frame. Lines are cleaned the way Inkspire cleans its sketch scaffolds (structure, not
+// texture): a line is kept if it runs along the blot's edge, or if it is long; short lines lying inside the wash are texture
+// and dropped. Small dark marks are kept as dots (an eye, a moss dot).
+function motifRecord(inner){
+  const x0=Math.max(0,Math.floor(inner[0]*W)), y0=Math.max(0,Math.floor(inner[1]*H)), x1=Math.min(W,Math.ceil(inner[2]*W)), y1=Math.min(H,Math.ceil(inner[3]*H));
+  const n=W*H, inBox=j=>{ const x=j%W, y=(j/W)|0; return x>=x0&&x<x1&&y>=y0&&y<y1; }, boxShort=Math.max(4,Math.min(x1-x0,y1-y0)), boxArea=(x1-x0)*(y1-y0);
+  const ro=Math.max(3,Math.round(0.018*Math.min(W,H))), op=morph(morph(T,W,H,ro,false),W,H,ro,true);
+  let blot=new Uint8Array(n); for(let j=0;j<n;j++) blot[j]=inBox(j)&&op[j]>0.10?1:0; dropSmall(blot,W,H,Math.max(8,0.003*boxArea));
+  let cnt=0; for(let j=0;j<n;j++) cnt+=blot[j];
+  let kind='wash';
+  if(cnt<0.02*boxArea){ kind='line'; blot=new Uint8Array(n); for(let j=0;j<n;j++) blot[j]=inBox(j)&&T[j]>0.2?1:0; blot=Uint8Array.from(morph(Float32Array.from(blot),W,H,2,true),v=>v>0?1:0); for(let j=0;j<n;j++) if(!inBox(j)) blot[j]=0; cnt=0; for(let j=0;j<n;j++) cnt+=blot[j]; }
+  if(cnt<8) return null;
+  const px=[]; for(let j=0;j<n;j++) if(blot[j]) px.push(j);
+  const fr=LobeKit.frame(px,W,T), notB=new Uint8Array(n); for(let j=0;j<n;j++) notB[j]=blot[j]?0:1;
+  const dOut=edt(notB,W,H), dIn=edt(blot,W,H), edgeD=j=>blot[j]?dIn[j]:dOut[j];
+  const lines=[], marks=motifMarks(T,W,H,blot,dIn,[x0,y0,x1,y1],ro); window.__lastMarks=marks;
+  for(const st of marks.lines){ let run=[];
+    const flush=()=>{ if(run.length>=2){ let L=0,near=0,inside=0; for(let i=0;i<run.length;i++){ if(i) L+=Math.hypot(run[i][0]-run[i-1][0],run[i][1]-run[i-1][1]); const j=Math.floor(run[i][1])*W+Math.floor(run[i][0]); if(edgeD(j)<=2.2) near++; if(blot[j]&&dIn[j]>2.2) inside++; }
+        near/=run.length; inside/=run.length;
+        if(L>=0.12*boxShort||(near>=0.5&&L>=5)) lines.push({run,L,score:L*(1+near)*(inside>0.7?0.6:1)}); }
+      run=[]; };
+    for(const p of st.pts){ const X=Math.floor(p[0]), Y=Math.floor(p[1]); if(X>=x0&&X<x1&&Y>=y0&&Y<y1) run.push(p); else flush(); }
+    flush(); }
+  lines.sort((a,b)=>b.score-a.score);
+  const dots=marks.dots;
+  const r3=v=>+v.toFixed(3), loc=(x,y)=>LobeKit.toLocal(fr,x,y);
+  return { kind, f:LobeKit.features(fr,boxShort).map(r3), blotShare:r3(cnt/boxArea),
+    lines:lines.slice(0,40).map(l=>l.run.map(p=>{ const [u,v]=loc(p[0],p[1]); return [r3(u),r3(v),r3(p[2]/fr.hw)]; })),
+    dots:dots.slice(0,24).map(d=>{ const [u,v]=loc(d[0],d[1]); return [r3(u),r3(v),r3(d[2]/fr.hw)]; }) }; }
 function lobeRecords(pl,W,H,T){
   const G=(pl.lobeGroups||[]).filter(px=>px.length>=Math.max(12,0.0006*W*H)); if(!G.length) return [];   // specks are not blots
   const n=W*H, own=new Int32Array(n).fill(-1), dist=new Float32Array(n).fill(1e9), q=[];
@@ -957,7 +1022,14 @@ window.__mc={ get plan(){return plan;}, get size(){return [W,H];}, get running()
   refine(){ prevScore=lastScore; lastAdded=updateGain(); refinePass++; running=true; job={gen:fullJob(true),onDone:finish}; }, pump(ms){ const t0=performance.now(); while(job&&performance.now()-t0<ms){ const r=job.gen.next(); updateStatus(); if(r.done){ const ok=r.value!==false&&running; const d=job; job=null; d.onDone(ok); } } if(sim) simShow(sim); return !!job; },
   test(w,h,pl){ if(sim){ freeSim(sim); } W=w; H=h; T=new Float32Array(w*h); plan=pl; cv.width=w*2; cv.height=h*2; sim=makeSim(w,h,7); const R=brushR(w,h);
     pl.washStrokes=pl.washStrokes||[]; for(const x of pl.washes){ x.ink=x.ink||0.8; } running=true; job={gen:execute(sim,pl,7),onDone:()=>{running=false;}}; },
-  get T(){ return Array.from(T); }, libraryLines(){ return libraryLines(T,W,H).map(l=>l.pts); }, lobeRecords(){ return lobeRecords(plan,W,H,T); }, get lib(){ return lib; }, libraryJson, libAdd(src,meta){ return loadImg(src,false).then(im=>libAdd(im,meta||{title:'test'})); }, density(){ return sim?Array.from(simDensity(sim)):null; }, score(){ return sim?score():null; }, get lastScore(){ return lastScore; }, scoreMaps(D,T,w,h){ return scoreMaps(Float32Array.from(D),Float32Array.from(T),w,h); }, exportJson(){ return exportData(); } };
+  get T(){ return Array.from(T); }, libraryLines(){ return libraryLines(T,W,H).map(l=>l.pts); }, lobeRecords(){ return lobeRecords(plan,W,H,T); }, lineArt(src,box){ return loadImg(src,false).then(im=>{ prepareTarget(im); const x0=Math.round(box[0]*W), y0=Math.round(box[1]*H), x1=Math.round(box[2]*W), y1=Math.round(box[3]*H), n=W*H, mk=new Uint8Array(n);
+    for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++){ const j=y*W+x; mk[j]=T[j]>0.22?1:0; }
+    { const c=morph(morph(Float32Array.from(mk),W,H,1,true),W,H,1,false); for(let j=0;j<n;j++) mk[j]=c[j]>0.5?1:0; }          // close hairline gaps in the print
+    dropSmall(mk,W,H,12); const dt=edt(mk,W,H);
+    let paths=traceSkeleton(thin(mk,W,H),W,H).filter(p=>p.length>=2).map(p=>p.map(i=>[(i%W)+0.5,((i/W)|0)+0.5,Math.max(1,2*dt[i]-1)]));
+    paths=paths.filter(p=>p.length>=5);                                                                                   // spurs left by thinning a thick line
+    paths=joinPaths(paths,5,0.45); paths=paths.filter(p=>p.length>=8);
+    return {W,H,paths:paths.map(p=>{ const xy=smoothSeq(p.map(q=>[q[0],q[1]]),1), out=[]; let acc=0; for(let i=0;i<p.length;i++){ if(i>0) acc+=Math.hypot(xy[i][0]-xy[i-1][0],xy[i][1]-xy[i-1][1]); if(i===0||i===p.length-1||acc>=2){ out.push([+(xy[i][0]/W).toFixed(5),+(xy[i][1]/H).toFixed(5),+(p[i][2]/W).toFixed(5)]); acc=0; } } return out; })}; }); }, motifDebug(src){ return loadImg(src,false).then(im=>{ prepareTarget(im); const r=motifRecord([0,0,1,1]), d=window.__lastMarks||{}; return {W,H,T:Array.from(T),lines:(d.lines||[]).map(l=>l.pts),dots:d.dots||[],rec:r}; }); }, motif(src,inner){ return loadImg(src,false).then(im=>{ if(sim){ freeSim(sim); sim=null; } loadedImg=im; prepareTarget(im); return motifRecord(inner); }); }, get lib(){ return lib; }, libraryJson, libAdd(src,meta){ return loadImg(src,false).then(im=>libAdd(im,meta||{title:'test'})); }, density(){ return sim?Array.from(simDensity(sim)):null; }, score(){ return sim?score():null; }, get lastScore(){ return lastScore; }, scoreMaps(D,T,w,h){ return scoreMaps(Float32Array.from(D),Float32Array.from(T),w,h); }, exportJson(){ return exportData(); } };
 })();
 </script>
 </body>
