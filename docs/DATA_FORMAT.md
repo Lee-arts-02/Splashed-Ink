@@ -203,3 +203,26 @@ its nearest match was left alone.
 Libraries built with *Fetch public-domain paintings from The Met* use only works The Met marks public domain (CC0). For anything
 added from your own files, `license` says it is unknown: check before sharing such a library.
 
+---
+
+## 4. Motif library v1 (`splashed-ink-motifs/v1`)
+
+What the Reader draws. Each motif is a thing an ink painter makes out of a blot (a bird, a fish, a rock), as a list of lines in
+the motif's own frame and in drawing order. The shipped library ([`data/motifs-v1.json`](../data/motifs-v1.json)) is built by
+`tools/build_traced.py` from [`data/manual-traced.json`](../data/manual-traced.json): key strokes traced by hand from the
+*Mustard Seed Garden Manual* (1935 edition, National Diet Library, public domain; pages fetched by `tools/fetch_manual.py`) and from
+CC0 paintings at the Cleveland Museum of Art. Each traced motif names its source, its long axis (`head`, `tail`) and its half-width.
+
+| Field | Meaning |
+|---|---|
+| `label`, `zh`, `note` | what it is |
+| `kind` | `manual`: traced by hand, in drawing order. `wash` or `line`: read from a painting by Machine Copy (experimental) |
+| `f` | LobeKit features of its outline (see lobes-v1); for traced motifs only the elongation (first value) is used |
+| `lines` | `[u, v, width]` points, u along the long axis (-1 to 1), v across in half-widths, in drawing order |
+| `parts` | what each line draws (beak, eye, back, ...) |
+| `sketch` | how many of the first lines make the pale first sketch |
+| `painting` | the source: title, artist, link, licence |
+
+`data/motifs-annotations.json` (format `splashed-ink-motif-annotations/v1`) boxes 38 motifs in the curated paintings; reading them
+automatically (`tools/build_motifs.py`) did not give lines a person could read as the thing, which is why the shipped motifs are traced.
+

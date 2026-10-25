@@ -62,7 +62,7 @@ The *Session* panel lists saved sessions, ends and summarises the current one (s
 Recording can be turned off. [Format in docs/DATA_FORMAT.md.](docs/DATA_FORMAT.md)
 
 **Partners.** Five simple partners are built in and need no backend. They are rules, not AI, and are labelled that way:
-*Reader* outlines what you splashed: it finds the lobes in your ink and, given a lobe library, borrows how painters outlined the most similar lobes (without one it falls back on simple rules: part of an edge, a vein, a stalk); *Splasher* pours for you to read;
+*Reader* outlines what you splashed: it reads each blot as a motif traced by hand from the *Mustard Seed Garden Manual* and from public-domain paintings (a bird, Bada Shanren's fish and rock, Muqi's swallow and lotus leaf, an egret), sketches the first strokes in pale ink, and commits the reading in dark ink on its next turn; when the session ends it says what your ink was read as, and from which work; *Splasher* pours for you to read;
 *Chance* answers at random and reads nothing; *Counterweight* reads the paper and paints on the opposite side, then tilts toward the ink;
 *Echo* mirrors your last stroke, but only when "What your partner sees" lets it see how you drew. Inside claude.ai, Claude appears first in the list.
 To add your own with a few lines of JavaScript (a model that continues strokes, a mirror of the person's habits), see [docs/PARTNER_API.md](docs/PARTNER_API.md).
@@ -162,6 +162,8 @@ run `python tests/run_checks.py --splashed` and `--machine-copy` separately if y
 * Cox, Gould, Cecchinato, Iacovides and Renfree, *Design frictions for mindful interactions: the case for microboundaries*, CHI EA 2016.
 * Chalmers and Galani, *Seamful interweaving: heterogeneity in the theory and design of interactive systems*, DIS 2004.
 * *Better slow than sorry: introducing positive friction for reliable dialogue systems*, arXiv:2501.17348.
+* Lin, Kang, Martelaro, Kittur, Chen and Hong, *Inkspire: Supporting design exploration with generative AI through analogical sketching*, CHI 2025 (arXiv:2501.18588): analogies as inspiration, and a low-fidelity scaffold of the AI's state under the user's sketch. The Reader's pale first sketch and its readings of your ink as a fish or a bird follow the same two ideas, without generated images.
+* Wang Gai and others, *Mustard Seed Garden Manual of Painting* (芥子園畫傳), 1679 onward: the stroke orders the Reader's motifs follow (1935 Japanese edition, National Diet Library, public domain).
 
 ## License
 

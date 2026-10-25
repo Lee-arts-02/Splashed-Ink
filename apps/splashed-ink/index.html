@@ -831,14 +831,16 @@ async function claudeLabels(ctx,blobs,W,H){                                    /
   const prompt=`This is a sheet of rice paper with splashed ink. Ink painters read a splash as something (a bird, a fish, a rock, a leaf) and then draw it out with a few lines. For each blot listed (x and y from 0 to 1, origin top left), say what it could be read as, choosing only from: ${labels.join(', ')}. Choose what the shape suggests, not what is most common. Blots: ${list}. Reply with only JSON: {"readings":[{"blot":1,"label":"..."}]}`;
   try{ const r=await Promise.race([sampleFn.json(prompt,{images:ctx.imageBlob,modelTier:'default',cache:false}),sleep(25000).then(()=>null)]);
     const out={}; for(const x of (r&&r.readings)||[]) if(labels.includes(x.label)) out[(x.blot|0)-1]=x.label; return out; }catch(e){ return null; } }
-function motifGestures(mot,fr,W,H,stage,rd,ink){
+function motifGestures(mot,fr0,W,H,stage,rd,ink){
+  // keep the motif's own proportions: a bird drawn into a long thin blot stays a bird, sized to the blot's area and turned its way
+  const rt=Math.exp(-mot.f[0]), A=Math.sqrt(fr0.Lh*fr0.hw), fr=mot.kind==='manual'?{...fr0,Lh:A/Math.sqrt(rt),hw:A*Math.sqrt(rt)}:fr0;
   const N=([x,y])=>[r4(cl01(x/W,0.005,0.995)),r4(cl01(y/H,0.005,0.995))], g=[];
   const toW=(u,v)=>LobeKit.toWorld(fr,u,v);
   const lines=mot.lines.map(ln=>{ const pts=ln.map(([u,v,w])=>{ const [x,y]=toW(u,v); return [x,y,w*fr.hw]; }); let len=0; for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]); return {pts,len}; })
     .filter(l=>l.len>=1.5&&l.pts.some(p=>p[0]>=0&&p[1]>=0&&p[0]<W&&p[1]<H));
-  const take=stage==='sketch'?lines.slice(0,3):lines.slice(3,14);
+  const k0=mot.sketch||3, take=stage==='sketch'?lines.slice(0,k0):lines.slice(k0,k0+14);      // the first few strokes of the manual's order make the pale sketch
   for(const l of take){ const step=Math.max(1,Math.ceil(l.pts.length/10)), pts=l.pts.filter((_,i)=>i%step===0||i===l.pts.length-1).slice(0,10), path=pts.map(N); if(path.length<2) continue;
-    const wAvg=pts.reduce((a,p)=>a+p[2],0)/pts.length, o={type:'outline',path,seconds:r3(Math.max(0.35,Math.min(3,l.len/W*(stage==='sketch'?2.4:1.8)))),press:r3(cl01((stage==='sketch'?0.2:0.3)+0.35*wAvg,0.2,1))};
+    const wAvg=pts.reduce((a,p)=>a+p[2],0)/pts.length, o={type:'outline',path,seconds:r3(Math.max(0.35,Math.min(3,l.len/W*(stage==='sketch'?2.4:2.2)))),press:r3(mot.kind==='manual'?cl01(0.18+0.2*wAvg,0.18,0.55):cl01((stage==='sketch'?0.2:0.3)+0.35*wAvg,0.2,1))};
     if(stage==='sketch') o.light=true; if(ink!==undefined&&stage!=='sketch') o.ink=ink; g.push(o); }
   if(stage!=='sketch') for(const [u,v,r] of mot.dots.slice(0,10)){ const [x,y]=toW(u,v); if(x<0||y<0||x>=W||y>=H) continue; const d=Math.max(0.4,r*fr.hw*0.6);
     const o={type:'outline',path:[N([x-d,y-d*0.3]),N([x+d,y+d*0.3])],seconds:0.3,press:0.95}; if(ink!==undefined) o.ink=ink; g.push(o); }

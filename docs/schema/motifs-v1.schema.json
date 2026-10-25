@@ -44,9 +44,10 @@
           "kind": {
             "enum": [
               "wash",
-              "line"
+              "line",
+              "manual"
             ],
-            "description": "wash: the blot is the motif's wash. line: the motif is drawn mostly in line, and its blot is the ink of those lines."
+            "description": "wash or line: read from a painting by Machine Copy. manual: key strokes traced by hand from a painting manual, in its drawing order."
           },
           "blotShare": {
             "type": "number",
@@ -115,6 +116,18 @@
                 "type": "string"
               }
             }
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "For each line, the part it draws (beak, eye, head, ...)."
+          },
+          "sketch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many of the first lines make the pale first sketch."
           }
         }
       }
