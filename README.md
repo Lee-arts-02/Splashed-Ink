@@ -41,10 +41,13 @@ Where there is no tilt sensor, drag the dot at the top right (or use the arrow k
 Switch **Tool** to *Brush* (or press B; P for pour) to draw lines. The brush is thick, wet and dark when you move it slowly and thin, dry and pale when you move it fast, and it runs out of ink as it travels; lift it and pause to dip again. Hold *new sheet* for a moment to start again. Pass the paper to a partner, who looks at it, then paints in the same ink with the same physics.
 The partner never speaks; it answers with a few brush gestures.
 
-**Friction.** The *Friction* button opens six settings. [Details and rationale in docs/FRICTION.md.](docs/FRICTION.md)
+**泼 and 勾: splash, then outline.** In splashed-ink painting the splash is chance and the outline reads it: the painter looks at the blot, decides it is a leaf or a rock, and draws it out with a few fine lines, never the whole edge. Splashed Ink splits those two hands between you and your partner. By default you splash (pour and brush) and your partner outlines; switch *Who does what* to have your partner splash and you outline with the fine brush (O). Wet paper shows a cool sheen that fades as it dries, so when you outline is a choice: into wet ink the line blooms, on dry paper it stays crisp.
+
+**Friction.** The *Friction* button opens seven settings. [Details and rationale in docs/FRICTION.md.](docs/FRICTION.md)
 
 | Setting | From | To |
 |---|---|---|
+| Who does what | you splash, partner outlines (or the reverse) | anything goes |
 | Undo | none | unlimited |
 | Paper drying | slow | instant |
 | Ink supply | scarce | unlimited (with a tone picker) |
@@ -58,7 +61,8 @@ The partner never speaks; it answers with a few brush gestures.
 The *Session* panel lists saved sessions, ends and summarises the current one (strokes, pauses, undos, partner turns), and replays any session at 1x, 4x or 16x.
 Recording can be turned off. [Format in docs/DATA_FORMAT.md.](docs/DATA_FORMAT.md)
 
-**Partners.** Three simple partners are built in and need no backend. They are rules, not AI, and are labelled that way:
+**Partners.** Five simple partners are built in and need no backend. They are rules, not AI, and are labelled that way:
+*Reader* outlines what you splashed: it finds the lobes in your ink and draws part of an edge, a vein, a stalk; *Splasher* pours for you to read;
 *Chance* answers at random and reads nothing; *Counterweight* reads the paper and paints on the opposite side, then tilts toward the ink;
 *Echo* mirrors your last stroke, but only when "What your partner sees" lets it see how you drew. Inside claude.ai, Claude appears first in the list.
 To add your own with a few lines of JavaScript (a model that continues strokes, a mirror of the person's habits), see [docs/PARTNER_API.md](docs/PARTNER_API.md).
@@ -128,7 +132,8 @@ run `python tests/run_checks.py --splashed` and `--machine-copy` separately if y
 
 * Pull the ink simulation into one small shared library; the two apps currently carry slightly different copies of the step function.
 * Add momentum to the simulation so ink can be thrown and rush ahead of a stroke. Splashed Ink would gain the most.
-* Comparison partners: a small sequence model trained on exported plans, and a mirror that repeats the person's own habits.
+* A Reader that learns from paintings: Machine Copy records where painters put lines relative to each lobe of wash (along which edge, how far along the axis), and the partner retrieves the most similar lobes and borrows how they were outlined (nearest neighbours first, a sequence model later).
+* Comparison partners: a mirror that repeats the person's own habits.
 * A Chinese-language interface.
 
 ## Related work and ideas this builds on

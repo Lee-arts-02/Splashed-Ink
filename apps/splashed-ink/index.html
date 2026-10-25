@@ -111,10 +111,11 @@ button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid va
     <div class="notes">
       <p>Press and hold the paper to pour.</p>
       <p>Tilt your phone, and wet ink runs with it.</p>
-      <p>Switch the tool to the brush to draw lines: slow is thick and wet, fast is thin and dry, and the brush runs out of ink as it goes.</p>
+      <p>Switch the tool to the brush to sweep: slow is thick and wet, fast is thin and dry, and the brush runs out of ink as it goes.</p>
+      <p>One of you splashes, the other outlines: reading the ink and drawing a form out of it with a fine brush. Wet paper looks darker; outline it while wet and the line blooms, wait and it stays crisp.</p>
       <p>The more you pour, the paler the ink. Pause, and it darkens again.</p>
       <p>The paper dries. What falls cannot be taken back.</p>
-      <p>When you are ready, pass the paper. Your partner answers only in ink.</p>
+      <p>When you are ready, pass the paper. Your partner answers only in ink, in its own role.</p>
       <p>The Friction button turns each of these resistances up or down.</p>
     </div>
     <p class="fine" id="privacy">Your strokes are recorded in this browser so you can replay them. Nothing leaves your device unless you export it, or pass the paper to a partner that runs elsewhere.</p>
@@ -130,7 +131,8 @@ button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid va
   </div>
   <div class="row">
     <button class="chip" id="newSheet" type="button" aria-label="Press and hold for a new sheet">Hold for new sheet<span class="fill" id="fill"></span></button>
-    <button class="chip" id="tool" type="button" aria-label="Switch between pouring ink and drawing with the brush">Tool: Pour</button>
+    <button class="chip" id="tool" type="button" aria-label="Switch tool: pour, brush or outline">Tool: Pour</button>
+    <span class="chip" id="role" role="status">You splash</span>
   </div>
 </div>
 <div class="hud" id="hudL">
@@ -197,9 +199,9 @@ const hasF32 = !!gl.getExtension('EXT_color_buffer_float'), hasF16 = !!gl.getExt
 const P = new URLSearchParams(location.search);
 
 // ================= constants =================
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.5.0';
 const TICK = 1/60, STEPS = 6, POUR = 0.06, MAXP = 4, MAXS = 24, SIM_MAXPX = 260000, MAX_UNDO = 12;   // MAXP pointers at once, MAXS brush stamps per simulation step
-const BRUSH_USE = 0.4, BRUSH_REDIP = 6;                                                             // the brush spends 40% of a full pot per sheet-width drawn, and re-dips 6x faster than a pour recovers
+const BRUSH_USE = 0.4, BRUSH_REDIP = 6, LINE_USE = 0.12;                                                             // the brush spends 40% of a full pot per sheet-width drawn, and re-dips 6x faster than a pour recovers
 const KR = 1.5, KD = 0.9;                                                                              // brush recipe constants, calibrated with Machine Copy's lines
 const DRYK = {slow:0.35, normal:1, fast:4, instant:400};
 const INKP = {scarce:[0.18,0.012], normal:[0.09,0.025]};   // [depletion per second while pouring, recovery per second while resting]
@@ -207,9 +209,13 @@ const TONES = [[0.82,'Scorched ink'],[0.6,'Thick ink'],[0.38,'Heavy ink'],[0.16,
 const TONE_CYCLE = [1,0.7,0.45,0.2,0];
 
 // ================= friction settings =================
-const DEFAULTS = {undo:'none', drying:'normal', ink:'normal', words:'off', sees:'paper', redo:'final'};
-const SEAMLESS = {undo:'unlimited', drying:'instant', ink:'unlimited', words:'on', sees:'paper+strokes', redo:'redo'};
+const DEFAULTS = {roles:'you-splash', undo:'none', drying:'normal', ink:'normal', words:'off', sees:'paper', redo:'final'};
+const SEAMLESS = {roles:'free', undo:'unlimited', drying:'instant', ink:'unlimited', words:'on', sees:'paper+strokes', redo:'redo'};
 const KNOBS = {
+  roles: {label:'Who does what', opts:[['you-splash','You splash, partner outlines'],['partner-splash','Partner splashes, you outline'],['free','Anything goes']],
+          blurb:{'you-splash':'You pour and sweep the ink. Your partner can only outline: it reads what you made and gives it a form with a few fine lines.',
+                 'partner-splash':'Your partner pours first. You can only outline: find something in its ink and draw it out. Pass the paper to begin.',
+                 free:'Both of you can pour, brush and outline.'}},
   undo:  {label:'Undo', opts:[['none','None'],['one','One step'],['unlimited','Unlimited']],
           blurb:{none:'Nothing can be taken back.', one:'You can take back your last stroke.', unlimited:'You can take back every stroke, one after another.'}},
   drying:{label:'Paper drying', opts:[['slow','Slow'],['normal','Normal'],['fast','Fast'],['instant','Instant']],
@@ -231,6 +237,11 @@ function settingsFromUrl(){
   return sanitizeSettings(s);
 }
 const LOCKED = P.get('lock')==='1';
+// 泼 then 勾: the splash is chance, the outline reads it. Each role has its own tools.
+const TOOLS = {splash:['pour','brush'], outline:['line'], free:['pour','brush','line']};
+const userRole = r => r==='you-splash'?'splash':(r==='partner-splash'?'outline':'free');
+const partnerRole = r => r==='you-splash'?'outline':(r==='partner-splash'?'splash':'free');
+const TOOL_NAME = {pour:'Pour', brush:'Brush', line:'Outline'};
 let keepRecord = P.get('record')!=='0';
 
 // ================= shaders =================
@@ -294,15 +305,19 @@ vec4 bil(vec2 uv){ ivec2 R=textureSize(uS,0); vec2 x=uv*vec2(R)-0.5; ivec2 i=ive
 void main(){
   vec4 s=bil(vUv); float fib=texture(uFib,vUv).r;
   vec3 paper=mix(vec3(0.900,0.876,0.823),vec3(0.958,0.942,0.906),fib); paper*=1.0-0.07*s.a;
-  float v=1.0-exp(-(s.b*1.05+s.g*0.75)); v=clamp(v*(0.85+0.25*fib),0.,1.);
-  o=vec4(mix(paper,vec3(0.106,0.114,0.133),v),1.);
+  float wet=smoothstep(0.004,0.12,s.r);                                   // standing water: the paper darkens and cools a little, and loses its fibre texture
+  paper=mix(paper, paper*vec3(0.93,0.945,0.96)+0.015, wet*0.85);
+  float v=1.0-exp(-(s.b*1.05+s.g*0.75)); v=clamp(v*(0.85+0.25*fib*(1.0-0.6*wet)),0.,1.);
+  vec3 col=mix(paper,vec3(0.106,0.114,0.133),v);
+  col+=wet*vec3(0.075,0.085,0.10)*(0.35+0.65*smoothstep(0.5,0.92,fib));   // wet ink and paper catch the light: a cool sheen that fades as the paper drinks the water
+  o=vec4(col,1.);
 }`;
 const COPY = `#version 300 es
 precision highp float; uniform sampler2D uS; out vec4 o;
 void main(){ o=texelFetch(uS,ivec2(gl_FragCoord.xy),0); }`;
 const DENS = `#version 300 es
 precision highp float; uniform sampler2D uS; out vec4 o;
-void main(){ vec4 s=texelFetch(uS,ivec2(gl_FragCoord.xy),0); o=vec4(clamp(1.0-exp(-(s.b*1.05+s.g*0.75)),0.,1.),0.,0.,1.); }`;
+void main(){ vec4 s=texelFetch(uS,ivec2(gl_FragCoord.xy),0); o=vec4(clamp(1.0-exp(-(s.b*1.05+s.g*0.75)),0.,1.),clamp(s.r*4.0,0.,1.),0.,1.); }`;
 function sh(t,src){ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
 function prog(fs){ const p=gl.createProgram(); gl.attachShader(p,sh(gl.VERTEX_SHADER,VS)); gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs)); gl.bindAttribLocation(p,0,'a'); gl.linkProgram(p);
   if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
@@ -376,7 +391,14 @@ function density(){
   gl.useProgram(densP.p); gl.viewport(0,0,simW,simH); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,texA); gl.uniform1i(densP.u.uS,0);
   gl.bindFramebuffer(gl.FRAMEBUFFER,dFb); gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   const px=new Uint8Array(simW*simH*4); gl.readPixels(0,0,simW,simH,gl.RGBA,gl.UNSIGNED_BYTE,px);
-  const out=new Array(simW*simH); for(let i=0;i<out.length;i++) out[i]=px[i*4]; return out; }
+  const out=new Array(simW*simH); for(let i=0;i<out.length;i++) out[i]=px[i*4]; lastPx=px; return out; }
+let lastPx=null;
+// The paper for a partner that reads it closely: tone (0..1) and wetness (0..1) on a grid about 120 cells on its short side, row 0 at the top.
+function paperMaps(){ density(); const px=lastPx, k=Math.max(1,Math.round(Math.min(simW,simH)/120)), cols=Math.floor(simW/k), rows=Math.floor(simH/k);
+  const tone=new Float32Array(cols*rows), wet=new Float32Array(cols*rows);
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){ let a=0,b=0; for(let y=0;y<k;y++) for(let x=0;x<k;x++){ const sy=simH-1-(r*k+y), i=(sy*simW+c*k+x)*4; a+=px[i]; b+=px[i+1]; }
+    tone[r*cols+c]=a/(k*k*255); wet[r*cols+c]=b/(k*k*255); }
+  return {cols,rows,tone,wet}; }
 
 // ================= engine: everything that advances the paper =================
 // The engine is deterministic: given the same session header and the same events at the same ticks, it paints the same picture.
@@ -388,7 +410,7 @@ const bArr=new Float32Array(MAXS*4), bArr2=new Float32Array(MAXS*4), bArr3=new F
 const sm01=(a,b,x)=>{ const t=Math.max(0,Math.min(1,(x-a)/(b-a))); return t*t*(3-2*t); };
 const Dn=t=>-Math.log(1-Math.min(Math.max(t,0),0.97))/1.05;      // ink deposit density that shows as tone t
 function resetEngine(seed,settings){ E.tick=0; E.rng=rng32(seed); E.pointers.clear(); E.userG={x:0,y:0}; E.g={x:0,y:0}; E.gv={x:0,y:0}; E.gf={x:0,y:0};
-  E.C=1; E.Cai=1; E.aiTurn=false; E.aiTilt=null; E.actor=null; E.steps=STEPS; E.settings={...settings}; E.onPartnerDone=null; E.tool='pour'; E.aiTool='pour'; E.strokeSeed=0; }
+  E.C=1; E.Cai=1; E.aiTurn=false; E.aiTilt=null; E.actor=null; E.steps=STEPS; E.settings={...settings}; E.onPartnerDone=null; E.tool=TOOLS[userRole(E.settings.roles)][0]; E.aiTool='pour'; E.strokeSeed=0; }
 
 // ---- snapshots (undo and "ask again") ----
 let snapStack=[], snapPool=[], preAI=null;
@@ -417,15 +439,16 @@ function actorStep(){
   const gst=a.g[a.i]; if(!gst){ finishActor(); return; }
   if(a.phase==='run'){
     if(!a.init){ a.init=true; a.t=0; a.len=Math.max(1,Math.round((gst.seconds||1)*60)); a.gapInit=false;
-      if((gst.type==='pour'||gst.type==='stroke')&&E.settings.ink==='unlimited'&&typeof gst.ink==='number') E.Cai=clampN(gst.ink,0,1); }
-    if(gst.type==='pour'||gst.type==='stroke'){
-      const pts=gst.type==='stroke'?gst.path:[[gst.x,gst.y],...(gst.path||[])], k=a.len>1?a.t/(a.len-1):0, f=k*(pts.length-1), i=Math.min(pts.length-2,Math.floor(f)), u=pts.length>1?f-i:0;
+      if((gst.type==='pour'||gst.type==='stroke'||gst.type==='outline')&&E.settings.ink==='unlimited'&&typeof gst.ink==='number') E.Cai=clampN(gst.ink,0,1); }
+    if(gst.type==='pour'||gst.type==='stroke'||gst.type==='outline'){
+      const pts=gst.type!=='pour'?gst.path:[[gst.x,gst.y],...(gst.path||[])], k=a.len>1?a.t/(a.len-1):0, f=k*(pts.length-1), i=Math.min(pts.length-2,Math.floor(f)), u=pts.length>1?f-i:0;
       const A=pts[Math.max(0,i)], B=pts[Math.min(pts.length-1,i+1)];
       const x=r4(A[0]+(B[0]-A[0])*u), y=r4(A[1]+(B[1]-A[1])*u); let q=E.pointers.get('ai');
-      if(!q){ q=newPointer(x,y,0.5,true,gst.type==='stroke'?'brush':'pour'); E.pointers.set('ai',q); } q.x=x; q.y=y;
+      const pr=gst.type==='outline'?r3(0.12+0.88*Math.pow(Math.sin(Math.PI*Math.min(1,0.08+0.92*k)),0.7)*(typeof gst.press==='number'?clampN(gst.press,0.2,1):0.8)):0.5;
+      if(!q){ q=newPointer(x,y,pr,true,gst.type==='stroke'?'brush':(gst.type==='outline'?'line':'pour')); E.pointers.set('ai',q); } q.x=x; q.y=y; q.p=pr;
     } else if(gst.type==='tilt'){ const m=Math.hypot(gst.dx,gst.dy)||1, mag=Math.min(1,m)*0.8; E.aiTilt={x:gst.dx/m*mag,y:gst.dy/m*mag}; }
     a.t++;
-    if(a.t>=a.len){ a.phase='gap'; a.t=0; a.gap=(gst.type==='pour'||gst.type==='stroke')?15:(gst.type==='tilt'?24:0); a.gapInit=false; }
+    if(a.t>=a.len){ a.phase='gap'; a.t=0; a.gap=(gst.type==='pour'||gst.type==='stroke')?15:gst.type==='outline'?8:(gst.type==='tilt'?24:0); a.gapInit=false; }
   } else {
     if(!a.gapInit){ a.gapInit=true; E.pointers.delete('ai'); E.aiTilt=null; }
     a.t++; if(a.t>=a.gap){ a.i++; a.phase='run'; a.init=false; }
@@ -440,19 +463,25 @@ function engineTick(){
   const fs=1-Math.exp(-TICK/0.45); E.gf.x+=(E.g.x-E.gf.x)*fs; E.gf.y+=(E.g.y-E.gf.y)*fs;
   const ink=E.settings.ink, short=Math.min(simW,simH), all=[...E.pointers.values()].slice(0,MAXP);
   // The brush: how fast it moves decides how wide, wet and dark it lays down. Slow is wide and wet; fast is thin and dry.
-  for(const q of all){ if(q.tool!=='brush') continue;
+  for(const q of all){ if(q.tool==='pour') continue;
     const dx=(q.x-q.px)*simW, dy=(q.y-q.py)*simH, d=Math.hypot(dx,dy);
     q.sp=q.sp*0.8+d*60*0.2; q.len+=d; q.bd=d; q.bdx=d>0?dx/d:1; q.bdy=d>0?-dy/d:0;
-    const spn=q.sp/simW, vs=sm01(0.16,2.5,spn), wMax=0.06*short, wMin=Math.max(1.6,0.010*short), C=q.ai?E.Cai:E.C;
+    const spn=q.sp/simW, C=q.ai?E.Cai:E.C, line=q.tool==='line';
+    if(line){                                                                   // the outlining brush: a fine tip, dense ink, little water
+      const vs=sm01(0.1,1.8,spn), wMax=0.0105*short, wMin=Math.max(1.0,0.003*short);
+      q.bw=(wMax+(wMin-wMax)*vs)*Math.max(0.3,Math.min(1.4,0.25+1.05*q.p))*(0.55+0.45*Math.min(1,q.len/(2*wMax)));   // press harder and the tip spreads
+      q.bdry=Math.max(0,Math.min(0.85,0.12+0.6*sm01(0.6,2.6,spn)+0.5*(1-C)));
+      q.bD=Dn(Math.min(0.96,C)); continue; }
+    const vs=sm01(0.16,2.5,spn), wMax=0.06*short, wMin=Math.max(1.6,0.010*short);
     q.bw=(wMax+(wMin-wMax)*vs)*Math.max(0.4,Math.min(1.6,0.4+1.2*q.p))*(0.6+0.4*Math.min(1,q.len/(0.5*wMax)));   // pressure only matters on a pen
     q.bdry=Math.max(0,Math.min(0.85,0.08+0.75*sm01(0.4,2.4,spn)+0.5*(1-C)));                              // fast, or low on ink: drier
     q.bD=Dn(Math.min(0.95,C*0.95)); }
-  if(ink!=='unlimited'){ const [dep,rec]=INKP[ink], k=dep/0.09, recU=rec*(E.tool==='brush'?BRUSH_REDIP:1), recA=rec*(E.aiTool==='brush'?BRUSH_REDIP:1); let pourN=0, userDist=0;
-    for(const q of E.pointers.values()) if(!q.ai){ if(q.tool==='brush') userDist+=q.bd||0; else pourN++; }
+  if(ink!=='unlimited'){ const [dep,rec]=INKP[ink], k=dep/0.09, recU=rec*(E.tool!=='pour'?BRUSH_REDIP:1), recA=rec*(E.aiTool!=='pour'?BRUSH_REDIP:1); let pourN=0, userDist=0;
+    for(const q of E.pointers.values()) if(!q.ai){ if(q.tool!=='pour') userDist+=(q.bd||0)*(q.tool==='line'?LINE_USE/BRUSH_USE:1); else pourN++; }
     if(pourN) E.C=Math.max(0,E.C-dep*TICK*Math.sqrt(pourN)); else if(userCount()===0) E.C=Math.min(1,E.C+recU*TICK);      // pouring spends ink with time,
     if(userDist>0) E.C=Math.max(0,E.C-k*BRUSH_USE*userDist/simW);                                                       // the brush spends it with distance
     const a=E.pointers.get('ai');
-    if(a){ if(a.tool==='brush') E.Cai=Math.max(0,E.Cai-k*BRUSH_USE*(a.bd||0)/simW); else E.Cai=Math.max(0,E.Cai-dep*TICK); } else E.Cai=Math.min(1,E.Cai+recA*TICK); }
+    if(a){ if(a.tool!=='pour') E.Cai=Math.max(0,E.Cai-k*(a.tool==='line'?LINE_USE:BRUSH_USE)*(a.bd||0)/simW); else E.Cai=Math.max(0,E.Cai-dep*TICK); } else E.Cai=Math.min(1,E.Cai+recA*TICK); }
   gl.useProgram(simP.p); gl.viewport(0,0,simW,simH);
   const uR=12*Math.max(0.8,Math.min(1.6,Math.min(simW,simH)/240));
   gl.uniform2f(simP.u.uG,E.gf.x,-E.gf.y); gl.uniform1f(simP.u.uR,uR);
@@ -463,18 +492,18 @@ function engineTick(){
     let ns=0; bArr.fill(0); bArr2.fill(0); bArr3.fill(0);
     const put=(x,y,amt,c,rad,dry,dxn,dyn,st,lane,seed,flat)=>{ const o=ns*4; bArr[o]=x; bArr[o+1]=y; bArr[o+2]=amt; bArr[o+3]=c; bArr2[o]=rad; bArr2[o+1]=dry; bArr2[o+2]=dxn; bArr2[o+3]=dyn; bArr3[o]=st; bArr3[o+1]=lane; bArr3[o+2]=seed; bArr3[o+3]=flat; ns++; };
     for(const q of all){
-      if(q.tool!=='brush'){ const gx=(rs()+rs()+rs()-1.5)*rJ, gy=(rs()+rs()+rs()-1.5)*rJ;
+      if(q.tool==='pour'){ const gx=(rs()+rs()+rs()-1.5)*rJ, gy=(rs()+rs()+rs()-1.5)*rJ;
         put(q.x*simW+gx,(1-q.y)*simH+gy,POUR*(0.75+0.5*Math.min(1,q.p))*(STEPS/E.steps),q.ai?E.Cai:E.C,uR,0,1,0,0,1,0,0); continue; }
       const f0=k/E.steps, f1=(k+1)/E.steps, sx0=(q.px+(q.x-q.px)*f0)*simW, sy0=(1-(q.py+(q.y-q.py)*f0))*simH, sx1=(q.px+(q.x-q.px)*f1)*simW, sy1=(1-(q.py+(q.y-q.py)*f1))*simH;
       const seg=Math.hypot(sx1-sx0,sy1-sy0), rad=Math.max(0.9,0.5*q.bw*KR), nsub=Math.max(1,Math.min(5,Math.ceil(seg/Math.min(3,Math.max(0.5,0.5*rad))))), sp=Math.max(0.075,seg/nsub);
-      const fw=Math.min(1,sp/0.5), a=Math.min(0.03,Math.max(0.0022,0.0012*rad*rad))*fw,                      // very slow strokes stop getting wetter: stamps crowd, so each carries less water
+      const fw=Math.min(1,sp/0.5), a=Math.min(0.03,Math.max(0.0022,0.0012*rad*rad))*fw*(q.tool==='line'?0.7:1),                      // very slow strokes stop getting wetter: stamps crowd, so each carries less water
         Cs=q.bD*sp/(0.64*rad*a)*KD*(1.05+2.2/Math.pow(Math.max(q.bw,1),1.4))/(1-0.5*q.bdry);              // ink per stamp is set by the spacing, so ink per length stays right at any speed
       const st=(0.25+0.5*q.bdry)*sm01(3,8,q.bw), lane=Math.max(1.2,0.18*rad), flat=q.bdry>0.3?1:0;
       for(let j=0;j<nsub;j++){ const t=(j+1)/nsub; put(sx0+(sx1-sx0)*t,sy0+(sy1-sy0)*t,a,Cs,rad,q.bdry,q.bdx,q.bdy,st,lane,q.seed*7.31,flat); } }
     gl.uniform4fv(simP.u.uB,bArr); gl.uniform4fv(simP.u.uB2,bArr2); gl.uniform4fv(simP.u.uB3,bArr3); gl.uniform1i(simP.u.uN,ns);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,texA); gl.bindFramebuffer(gl.FRAMEBUFFER,fbB); gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
     [texA,texB]=[texB,texA]; [fbA,fbB]=[fbB,fbA]; }
-  for(const q of all) if(q.tool==='brush'){ q.px=q.x; q.py=q.y; }
+  for(const q of all) if(q.tool!=='pour'){ q.px=q.x; q.py=q.y; }
   E.tick++;
 }
 
@@ -483,11 +512,11 @@ function newSheet(seed){ clearState(); makePaper(seed); E.C=1; E.Cai=1; snapPool
 function applyEvent(ev){
   switch(ev.e){
     case 'pd': if(userCount()===0) takeSnapshot(); E.pointers.set(ev.i,newPointer(ev.x,ev.y,ev.p,false,E.tool)); break;
-    case 'tl': E.tool=ev.v==='brush'?'brush':'pour'; break;
+    case 'tl': { const ok=TOOLS[userRole(E.settings.roles)]; if(ok.includes(ev.v)) E.tool=ev.v; break; }
     case 'pm': { const q=E.pointers.get(ev.i); if(q){ q.x=ev.x; q.y=ev.y; q.p=ev.p; } break; }
     case 'pu': E.pointers.delete(ev.i); break;
     case 'g': E.userG={x:ev.x,y:ev.y}; break;
-    case 'k': E.settings[ev.k]=ev.v; if(ev.k==='undo') trimSnaps(); break;
+    case 'k': E.settings[ev.k]=ev.v; if(ev.k==='undo') trimSnaps(); if(ev.k==='roles'){ const ok=TOOLS[userRole(ev.v)]; if(!ok.includes(E.tool)) E.tool=ok[0]; } break;
     case 'st': E.steps=ev.n; break;
     case 'sh': newSheet(ev.s); break;
     case 'un': doUndo(); break;
@@ -501,8 +530,8 @@ function applyEvent(ev){
 
 // ================= session recording =================
 let session=null, mode='boot', running=false;
-function userEventsSince(tick){ const ev=session?session.events:[]; const out=[], open=new Map(); let tool='pour';
-  for(const e of ev){ if(e.e==='tl') tool=e.v; else if(e.e==='pd'){ open.set(e.i,{t0:e.t,pts:[[e.x,e.y]],tool}); }
+function userEventsSince(tick){ const ev=session?session.events:[]; const out=[], open=new Map(); let tool=TOOLS[userRole((session&&session.settings.roles)||'free')][0];
+  for(const e of ev){ if(e.e==='tl') tool=e.v; else if(e.e==='k'&&e.k==='roles'&&!TOOLS[userRole(e.v)].includes(tool)) tool=TOOLS[userRole(e.v)][0]; else if(e.e==='pd'){ open.set(e.i,{t0:e.t,pts:[[e.x,e.y]],tool}); }
     else if(e.e==='pm'&&open.has(e.i)){ open.get(e.i).pts.push([e.x,e.y]); }
     else if(e.e==='pu'&&open.has(e.i)){ const s=open.get(e.i); open.delete(e.i); s.t1=e.t; if(s.t0>=tick) out.push(s); } }
   return out; }
@@ -511,20 +540,22 @@ function strokesSummary(sinceTick){ const st=userEventsSince(sinceTick).slice(-1
   return st.map(s=>{ let len=0; for(let i=1;i<s.pts.length;i++) len+=Math.hypot((s.pts[i][0]-s.pts[i-1][0])*ar,s.pts[i][1]-s.pts[i-1][1]);
     const o={tool:s.tool,start:r3(s.t0/60),seconds:r3((s.t1-s.t0)/60),pause:prevEnd===null?null:r3((s.t0-prevEnd)/60),length:r3(len),path:simplify(s.pts,8)}; prevEnd=s.t1; return o; }); }
 function computeSummary(s){
-  const ar=s.device.viewport[0]/s.device.viewport[1]; const strokes=[], open=new Map(); let undo=0,redo=0,sheets=0,knobs=0,turns=0,errs=0,words=0,pSec=0,first=null,tool='pour',brushN=0;
+  const ar=s.device.viewport[0]/s.device.viewport[1]; const strokes=[], open=new Map(); let undo=0,redo=0,sheets=0,knobs=0,turns=0,errs=0,words=0,pSec=0,first=null,tool=TOOLS[userRole((s.settings&&s.settings.roles)||'free')][0],brushN=0,lineN=0,pLine=0,pSplash=0;
+  let rolesNow=(s.settings&&s.settings.roles)||'free';
   for(const e of s.events){
-    if(e.e==='tl') tool=e.v;
-    else if(e.e==='pd'){ open.set(e.i,{t0:e.t,len:0,last:[e.x,e.y]}); if(first===null) first=e.t; if(tool==='brush') brushN++; }
+    if(e.e==='tl'){ if(TOOLS[userRole(rolesNow)].includes(e.v)) tool=e.v; }
+    else if(e.e==='k'&&e.k==='roles'){ rolesNow=e.v; if(!TOOLS[userRole(e.v)].includes(tool)) tool=TOOLS[userRole(e.v)][0]; }
+    else if(e.e==='pd'){ open.set(e.i,{t0:e.t,len:0,last:[e.x,e.y]}); if(first===null) first=e.t; if(tool==='brush') brushN++; if(tool==='line') lineN++; }
     else if(e.e==='pm'&&open.has(e.i)){ const o=open.get(e.i); o.len+=Math.hypot((e.x-o.last[0])*ar,e.y-o.last[1]); o.last=[e.x,e.y]; }
     else if(e.e==='pu'&&open.has(e.i)){ const o=open.get(e.i); open.delete(e.i); strokes.push({t0:o.t0,t1:e.t,len:o.len}); }
     else if(e.e==='un') undo++; else if(e.e==='rd') redo++; else if(e.e==='sh') sheets++; else if(e.e==='k') knobs++;
-    else if(e.e==='pg'){ turns++; for(const g of e.gestures) pSec+=g.seconds||0; } else if(e.e==='pe') errs++;
+    else if(e.e==='pg'){ turns++; for(const g of e.gestures){ pSec+=g.seconds||0; if(g.type==='outline') pLine++; else if(g.type==='pour'||g.type==='stroke') pSplash++; } } else if(e.e==='pe') errs++;
     else if(e.e==='pa'&&e.words) words++; }
   const pauses=[]; for(let i=1;i<strokes.length;i++) pauses.push((strokes[i].t0-strokes[i-1].t1)/60); pauses.sort((a,b)=>a-b);
   const pourSec=strokes.reduce((a,b)=>a+(b.t1-b.t0)/60,0), pathLen=strokes.reduce((a,b)=>a+b.len,0);
   return {seconds:r3(s.endTick/60), strokes:strokes.length, pourSeconds:r3(pourSec), pathLength:r3(pathLen), firstStrokeAfterSeconds:first===null?null:r3(first/60),
     medianPauseSeconds:pauses.length?r3(pauses[pauses.length>>1]):null, longestPauseSeconds:pauses.length?r3(pauses[pauses.length-1]):null,
-    brushStrokes:brushN, undos:undo, partnerTurns:turns, partnerRedos:redo, partnerErrors:errs, partnerGestureSeconds:r3(pSec), wordsSent:words, newSheets:sheets, settingChanges:knobs}; }
+    brushStrokes:brushN, outlineStrokes:lineN, partnerOutlines:pLine, partnerSplashes:pSplash, undos:undo, partnerTurns:turns, partnerRedos:redo, partnerErrors:errs, partnerGestureSeconds:r3(pSec), wordsSent:words, newSheets:sheets, settingChanges:knobs}; }
 function emit(e,fields){ const ev={t:E.tick,e,...fields}; if(session) session.events.push(ev); applyEvent(ev); return ev; }
 function beginSession(){
   const seed=(Math.random()*1e9)>>>0, paperSeed=(Math.random()*1e9)>>>0, [w,h]=defaultSimSize();
@@ -614,7 +645,7 @@ ns.addEventListener('keyup',endHold);
 // ================= the partner =================
 // A partner is { label, turn(ctx) -> Promise<{gestures:[...]}> }. See docs/PARTNER_API.md.
 window.InkPartners=window.InkPartners||{};
-const aiHistory=[]; let lastPartnerTick=0, againOK=false, sampleFn=null, imagesOK=false, activeName=null;
+const aiHistory=[]; let lastPartnerTick=0, againOK=false, sampleFn=null, imagesOK=false, activeName=null, rolesSeen=null;
 (async()=>{ if(!window.claude||typeof window.claude.use!=='function') return;
   try{ sampleFn=await window.claude.use('sample'); }catch(e){ sampleFn=null; } if(!sampleFn) return;
   try{ const lim=await sampleFn.limits(); imagesOK=!!(lim&&lim.images); }catch(e){ imagesOK=false; }
@@ -622,7 +653,8 @@ const aiHistory=[]; let lastPartnerTick=0, againOK=false, sampleFn=null, imagesO
     const raw=await sampleFn.json(ctx.prompt,opts); return {gestures:raw&&raw.gestures?raw.gestures:raw}; }};
   refreshPartners(); })();
 const partnerList=()=>Object.entries(window.InkPartners).filter(([k,p])=>p&&typeof p.turn==='function');
-function refreshPartners(){ const order=['claude','echo','counterweight','chance'], rank=k=>{ const i=order.indexOf(k); return i<0?99:i; };
+function refreshPartners(){ const pr=partnerRole(E.settings.roles), order=pr==='outline'?['reader','claude','echo','counterweight','chance','splasher']:(pr==='splash'?['splasher','claude','counterweight','chance','echo','reader']:['claude','reader','splasher','echo','counterweight','chance']), rank=k=>{ const i=order.indexOf(k); return i<0?99:i; };
+  if(rolesSeen!==E.settings.roles){ rolesSeen=E.settings.roles; activeName=null; }
   const l=partnerList().sort((a,b)=>rank(a[0])-rank(b[0])), sel=$('partnerSel'); if(!l.length){ activeName=null; } else if(!l.some(x=>x[0]===activeName)) activeName=l[0][0];
   sel.innerHTML=l.map(([k,p])=>`<option value="${k}">${(p.label||k).replace(/</g,'&lt;')}</option>`).join(''); sel.value=activeName||''; sel.hidden=l.length<2; refreshHud(); }
 $('partnerSel').addEventListener('change',e=>{ activeName=e.target.value; });
@@ -642,7 +674,7 @@ const LOCAL={
     const st=ctx.strokes&&ctx.strokes.length?ctx.strokes[ctx.strokes.length-1]:null;
     if(st&&st.path&&st.path.length){ const m=st.path.map(p=>[cl01(1-p[0],0.04,0.96),cl01(p[1],0.04,0.96)]);
       const secs=Math.max(0.5,Math.min(3.5,st.seconds*1.1));
-      if(st.tool==='brush'&&m.length>=2) return {gestures:[{type:'stroke',path:m,seconds:secs}]};                        // a line is answered with a line
+      if(st.tool!=='pour'&&m.length>=2) return {gestures:[{type:st.tool==='line'?'outline':'stroke',path:m,seconds:secs}]};                        // a line is answered with a line
       return {gestures:[{type:'pour',x:m[0][0],y:m[0][1],seconds:secs,path:m.slice(1)}]}; }
     const g=parseGrid(ctx); let best=-1,bc=0,br=0; g.forEach((row,r)=>row.forEach((d,c)=>{ if(d>best){ best=d; bc=c; br=r; } }));
     if(best<=0) return {gestures:[{type:'pour',x:0.5,y:0.5,seconds:1,path:[]}]};
@@ -655,6 +687,99 @@ const LOCAL={
     const vx=cx-bx, vy=cy-by;                                                   // then tilt toward the existing ink so the two meet
     return {gestures:[{type:'pour',x:bx,y:by,seconds:1.6,path:[[cl01(bx+vx*0.25),cl01(by+vy*0.25)]]},{type:'wait',seconds:0.5},{type:'tilt',dx:vx,dy:vy,seconds:1.2}]}; }}
 };
+// ---- reading the ink: blots and their lobes, as Machine Copy finds them in paintings ----
+// A blot is ink wider than a line. It is cut into lobes where it narrows (a watershed on the distance to its edge), and each
+// lobe is described by its centre, long axis, length, width, outline, tone, wetness and how much of it is new since the last look.
+function chamfer(mask,W,H){ const d=new Float32Array(W*H); for(let j=0;j<W*H;j++) d[j]=mask[j]?1e6:0;
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const j=y*W+x; if(!d[j]) continue; let v=d[j];
+    if(x>0) v=Math.min(v,d[j-1]+1); if(y>0){ v=Math.min(v,d[j-W]+1); if(x>0) v=Math.min(v,d[j-W-1]+1.414); if(x<W-1) v=Math.min(v,d[j-W+1]+1.414); } d[j]=x===0||y===0||x===W-1||y===H-1?Math.min(v,1):v; }
+  for(let y=H-1;y>=0;y--) for(let x=W-1;x>=0;x--){ const j=y*W+x; if(!d[j]) continue; let v=d[j];
+    if(x<W-1) v=Math.min(v,d[j+1]+1); if(y<H-1){ v=Math.min(v,d[j+W]+1); if(x<W-1) v=Math.min(v,d[j+W+1]+1.414); if(x>0) v=Math.min(v,d[j+W-1]+1.414); } d[j]=v; }
+  return d; }
+function readBlots(m,prev){
+  const {cols:W,rows:H,tone,wet}=m, n=W*H, mask=new Uint8Array(n);
+  for(let j=0;j<n;j++) mask[j]=tone[j]>0.14?1:0;
+  const dt=chamfer(mask,W,H), order=[]; for(let j=0;j<n;j++) if(dt[j]>=1.5) order.push(j);    // thinner than ~3 cells is a line, not a blot
+  order.sort((a,b)=>dt[b]-dt[a]);
+  const lab=new Int32Array(n).fill(-1), par=[], peak=[], find=a=>{ while(par[a]!==a){ par[a]=par[par[a]]; a=par[a]; } return a; };
+  const NB8=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+  for(const j of order){ const x=j%W, y=(j/W)|0, roots=new Set();
+    for(const [dx,dy] of NB8){ const X=x+dx,Y=y+dy; if(X<0||Y<0||X>=W||Y>=H) continue; const l=lab[Y*W+X]; if(l>=0) roots.add(find(l)); }
+    if(!roots.size){ par.push(par.length); peak.push(dt[j]); lab[j]=par.length-1; continue; }
+    const rs=[...roots].sort((a,b)=>peak[b]-peak[a]); lab[j]=rs[0];
+    for(let k=1;k<rs.length;k++){ const a=find(rs[0]), b=find(rs[k]); if(a!==b&&dt[j]>=0.8*Math.min(peak[a],peak[b])){ par[b]=a; peak[a]=Math.max(peak[a],peak[b]); } } }
+  // grow each lobe back out to the blot's edge
+  const q=[]; for(const j of order){ lab[j]=find(lab[j]); q.push(j); }
+  for(let h=0;h<q.length;h++){ const j=q[h], x=j%W, y=(j/W)|0;
+    for(const [dx,dy] of NB8){ const X=x+dx,Y=y+dy; if(X<0||Y<0||X>=W||Y>=H) continue; const i=Y*W+X; if(mask[i]&&lab[i]<0){ lab[i]=lab[j]; q.push(i); } } }
+  const groups=new Map(); for(let j=0;j<n;j++) if(lab[j]>=0){ const r=lab[j]; if(!groups.has(r)) groups.set(r,[]); groups.get(r).push(j); }
+  const lobes=[];
+  for(const [r,px] of groups){ if(px.length<14) continue;
+    let mx=0,my=0,tn=0,wt=0,nw=0; for(const j of px){ mx+=j%W; my+=(j/W)|0; tn+=tone[j]; wt+=wet[j]; if(prev&&tone[j]-prev[j]>0.08) nw++; } const N=px.length; mx/=N; my/=N;
+    let cxx=0,cyy=0,cxy=0; for(const j of px){ const dx=j%W-mx, dy=((j/W)|0)-my; cxx+=dx*dx; cyy+=dy*dy; cxy+=dx*dy; }
+    const ang=0.5*Math.atan2(2*cxy,cxx-cyy), ax=Math.cos(ang), ay=Math.sin(ang); let umin=0,umax=0,vmax=0;
+    const B=36, rad=new Float32Array(B);
+    for(const j of px){ const dx=j%W+0.5-mx-0.5, dy=((j/W)|0)-my, u=dx*ax+dy*ay, v=-dx*ay+dy*ax; umin=Math.min(umin,u); umax=Math.max(umax,u); vmax=Math.max(vmax,Math.abs(v));
+      const b=((Math.round(Math.atan2(dy,dx)/(2*Math.PI)*B)%B)+B)%B, d=Math.hypot(dx,dy)+0.7; if(d>rad[b]) rad[b]=d; }
+    for(let b=0;b<B;b++) if(!rad[b]) rad[b]=Math.max(rad[(b+B-1)%B],rad[(b+1)%B]);
+    const rs=rad.map((_,b)=>(rad[(b+B-1)%B]+2*rad[b]+rad[(b+1)%B])/4);
+    lobes.push({cx:mx+0.5,cy:my+0.5,ax,ay,u0:umin,u1:umax,hw:Math.max(1,vmax),area:N,tone:tn/N,wet:wt/N,fresh:prev?nw/N:1,rad:rs,B}); }
+  return lobes; }
+const lerp=(a,b,t)=>a+(b-a)*t;
+// one lobe, read as a painter would: a line along part of its edge, a vein along its axis with a few side veins,
+// or spokes from a hub when it is round. Never the whole outline: 意到笔不到, the idea arrives where the brush does not.
+function outlineLobe(L,W,H,rd,opts){
+  const N=([x,y])=>[cl01((x)/W,0.01,0.99),cl01((y)/H,0.01,0.99)], g=[], aspect=(L.u1-L.u0)/(2*L.hw);
+  const spd=(pts,k)=>{ let l=0; for(let i=1;i<pts.length;i++) l+=Math.hypot(pts[i][0]-pts[i-1][0],(pts[i][1]-pts[i-1][1])*H/W); return r3(Math.max(0.35,Math.min(3,l*k))); };
+  const ink=opts.ink;
+  const veins=()=>{
+    if(aspect>1.4){ const flip=rd()<0.5?1:-1, ua=flip>0?L.u0:L.u1, ub=flip>0?L.u1:L.u0, bow=(rd()<0.5?1:-1)*0.18*L.hw, main=[];
+      for(let i=0;i<=6;i++){ const t=i/6, u=lerp(ua*0.85,ub*0.7,t), v=bow*Math.sin(Math.PI*t); main.push([L.cx+u*L.ax-v*L.ay, L.cy+u*L.ay+v*L.ax]); }
+      const p=main.map(N); g.push({type:'outline',path:p,seconds:spd(p,1.5),press:r3(0.75+0.25*rd()),ink});
+      const n=2+Math.floor(rd()*2); for(let k=0;k<n;k++){ const t=0.25+0.5*(k+0.5)/n+0.06*(rd()-0.5), side=k%2?1:-1, i=Math.min(5,Math.floor(t*6)), a=main[i], b=main[i+1], base=[lerp(a[0],b[0],0.5),lerp(a[1],b[1],0.5)];
+        const dx=(b[0]-a[0]), dy=(b[1]-a[1]), m=Math.hypot(dx,dy)||1, ca=Math.cos(0.65*side), sa=Math.sin(0.65*side), ex=(dx*ca-dy*sa)/m, ey=(dx*sa+dy*ca)/m, len=L.hw*(0.35+0.25*rd());
+        const sp=[base,[base[0]+ex*len*0.55+(-ey)*side*0.15*len,base[1]+ey*len*0.55+ex*side*0.15*len],[base[0]+ex*len,base[1]+ey*len]].map(N); g.push({type:'outline',path:sp,seconds:spd(sp,1.3),press:r3(0.45+0.25*rd()),ink}); } }
+    else { const ha=rd()*Math.PI*2, hub=[L.cx+Math.cos(ha)*0.2*L.hw,L.cy+Math.sin(ha)*0.2*L.hw], n=4+Math.floor(rd()*3), a0=rd()*Math.PI*2;
+      for(let k=0;k<n;k++){ const a=a0+k*2*Math.PI/n+0.25*(rd()-0.5), b=((Math.round(a/(2*Math.PI)*L.B)%L.B)+L.B)%L.B, r=L.rad[b]*(0.45+0.25*rd());
+        const sp=[hub,[hub[0]+Math.cos(a+0.12)*r*0.5,hub[1]+Math.sin(a+0.12)*r*0.5],[L.cx+Math.cos(a)*r,L.cy+Math.sin(a)*r]].map(N); g.push({type:'outline',path:sp,seconds:spd(sp,1.3),press:r3(0.45+0.3*rd()),ink}); } } };
+  const contour=()=>{ const B=L.B, start=Math.floor(rd()*B), len=Math.round(B*(0.24+0.2*rd())), off=(rd()-0.35)*1.2, pts=[];
+    for(let i=0;i<=len;i+=Math.max(1,Math.round(len/9))){ const b=(start+i)%B, a=b/B*2*Math.PI, r=L.rad[b]+off*(1-Math.abs(2*i/len-1)); pts.push([L.cx+Math.cos(a)*r,L.cy+Math.sin(a)*r]); }
+    if(pts.length>=2){ const p=pts.map(N); g.push({type:'outline',path:p,seconds:spd(p,1.9),press:r3(0.6+0.35*rd()),ink}); }
+    if(rd()<0.55){ const s2=(start+len+Math.round(B*(0.1+0.1*rd())))%B, l2=Math.round(B*(0.12+0.12*rd())), p2=[];
+      for(let i=0;i<=l2;i+=Math.max(1,Math.round(l2/5))){ const b=(s2+i)%B, a=b/B*2*Math.PI, r=L.rad[b]+0.3; p2.push([L.cx+Math.cos(a)*r,L.cy+Math.sin(a)*r]); }
+      if(p2.length>=2){ const p=p2.map(N); g.push({type:'outline',path:p,seconds:spd(p,1.6),press:r3(0.4+0.3*rd()),ink}); } } };
+  if(opts.wetFirst){ veins(); g.push({type:'wait',seconds:r3(1.6+rd()*1.6)}); contour(); }      // veins into the wet ink so they bloom, the edge once it has set
+  else { contour(); veins(); }
+  return g; }
+function stemFrom(L,W,H,m,rd,ink){                                                    // a stalk from the lobe's lowest edge down into empty paper, with a few thorns
+  let best=0,bb=0; for(let b=0;b<L.B;b++){ const a=b/L.B*2*Math.PI, y=L.cy+Math.sin(a)*L.rad[b]; if(y>best){ best=y; bb=b; } }
+  const a=bb/L.B*2*Math.PI, x0=L.cx+Math.cos(a)*L.rad[bb]*0.7, y0=L.cy+Math.sin(a)*L.rad[bb]*0.7, y1=Math.min(H-1,y0+H*(0.18+0.16*rd())); if(y1-y0<H*0.12) return [];
+  let ink0=0,c=0; for(let y=Math.ceil(y0+L.hw);y<y1;y++){ const X=Math.round(x0), Y=Math.round(y); if(X>=0&&X<W&&Y<H){ ink0+=m.tone[Y*W+X]; c++; } } if(c&&ink0/c>0.25) return [];
+  const sway=(rd()<0.5?-1:1)*W*(0.04+0.06*rd()), pts=[]; for(let i=0;i<=5;i++){ const t=i/5; pts.push([x0+sway*Math.sin(Math.PI*t*0.8)*t,lerp(y0,y1,t)]); }
+  const N=([x,y])=>[cl01(x/W,0.01,0.99),cl01(y/H,0.01,0.99)], p=pts.map(N), g=[{type:'outline',path:p,seconds:r3(1.3+0.8*rd()),press:r3(0.7+0.3*rd()),ink}];
+  const nd=2+Math.floor(rd()*3); for(let k=0;k<nd;k++){ const t=0.2+0.7*rd(), i=Math.min(4,Math.floor(t*5)), A=pts[i], s=k%2?1:-1, d=[[A[0]+s*0.4,A[1]],[A[0]+s*1.4,A[1]-0.9]].map(N); g.push({type:'outline',path:d,seconds:0.3,press:0.5,ink}); }
+  return g; }
+LOCAL.reader={label:'Reader (outlines what you splashed)', prev:null, async turn(ctx){ await sleep(600);
+  const m=ctx.paper, rd=Math.random, W=m.cols, H=m.rows; if(!m) return {gestures:[]};
+  const lobes=readBlots(m,this.prev); this.prev=m.tone;
+  if(!lobes.length) return {gestures:[{type:'wait',seconds:1}]};
+  lobes.sort((a,b)=>(b.area*(0.3+b.fresh))-(a.area*(0.3+a.fresh)));
+  const pick=lobes.slice(0,Math.min(lobes.length,lobes.length>3?3:lobes.length)), g=[];
+  const ink=ctx.settings.ink==='unlimited'?0.92:undefined;
+  for(const L of pick){ if(g.length>=12) break; g.push(...outlineLobe(L,W,H,rd,{wetFirst:L.wet>0.25&&rd()<0.7,ink})); }
+  if(rd()<0.6) g.push(...stemFrom(pick[0],W,H,m,rd,ink));
+  return {gestures:g.slice(0,14).map(x=>x.ink===undefined?(({ink,...y})=>y)(x):x)}; }};
+// the other role: lay down ink for someone else to read. Leaf-like sweeps near what is there, or anywhere on a blank sheet.
+LOCAL.splasher={label:'Splasher (pours for you to read)', async turn(ctx){ await sleep(600);
+  const m=ctx.paper, rd=Math.random, g=[]; let cx=0.5, cy=0.5, M=0;
+  if(m){ let sx=0,sy=0; for(let r=0;r<m.rows;r++) for(let c=0;c<m.cols;c++){ const t=m.tone[r*m.cols+c]; M+=t; sx+=t*c; sy+=t*r; } if(M>1){ cx=sx/M/m.cols; cy=sy/M/m.rows; } }
+  const n=1+Math.floor(rd()*2), un=ctx.settings.ink==='unlimited';
+  for(let i=0;i<n;i++){ const a=rd()*Math.PI*2, d=M>1?0.18+0.15*rd():0.1*rd(), x=cl01(cx+Math.cos(a)*d,0.15,0.85), y=cl01(cy+Math.sin(a)*d,0.15,0.85), b=a+(rd()-0.5)*1.2, L=0.12+0.14*rd();
+    const o={type:'pour',x:r4(x),y:r4(y),seconds:r3(1.2+rd()*1.6),path:[[r4(cl01(x+Math.cos(b)*L*0.5)),r4(cl01(y+Math.sin(b)*L*0.5))],[r4(cl01(x+Math.cos(b+0.3)*L)),r4(cl01(y+Math.sin(b+0.3)*L))]]};
+    if(un) o.ink=r3(0.35+0.55*rd()); g.push(o); }
+  if(rd()<0.5){ const x=cl01(cx+(rd()-0.5)*0.4), y=cl01(cy+(rd()-0.5)*0.4), b=rd()*Math.PI*2; g.push({type:'stroke',path:[[x,y],[cl01(x+Math.cos(b)*0.12),cl01(y+Math.sin(b)*0.12)],[cl01(x+Math.cos(b+0.4)*0.22),cl01(y+Math.sin(b+0.4)*0.22)]].map(p=>[r4(p[0]),r4(p[1])]),seconds:r3(1.6+rd())}); }
+  if(rd()<0.35) g.push({type:'tilt',dx:r3(rd()*2-1),dy:r3(rd()*2-1),seconds:r3(0.8+rd())});
+  return {gestures:g}; }};
 for(const [k,p] of Object.entries(LOCAL)) if(!window.InkPartners[k]) window.InkPartners[k]=p;
 function snapshotImage(){ const W=480, H=Math.round(480*cv.height/cv.width), c=document.createElement('canvas'); c.width=W; c.height=H; c.getContext('2d').drawImage(cv,0,0,W,H);
   const cols=20, rows=Math.max(10,Math.round(20*H/W)), g=document.createElement('canvas'); g.width=cols; g.height=rows; const gx=g.getContext('2d'); gx.imageSmoothingQuality='high'; gx.drawImage(c,0,0,cols,rows);
@@ -671,37 +796,48 @@ function rulesText(S,words,strokes){
   let extra=''; if(words) extra+=`\nYour partner wrote: "${words}"`;
   if(strokes&&strokes.length) extra+=`\nYour partner's recent strokes (start = seconds since the session began, seconds = duration, pause = seconds since their previous stroke, path = x,y points from 0 to 1):\n${JSON.stringify(strokes)}`;
   return {rules:r.join(' '),extra}; }
+const ROLE_TEXT={
+  outline:'Your role is to outline. Your partner splashed; you read. Find a form in their ink (a leaf, a lotus, a rock, a branch, a bird) and draw it out with a few fine lines: part of an edge, a vein, a stalk. Leave most of the outline unsaid: the idea should arrive where the brush does not. Outline while the ink is wet and the line blooms into it; wait and it stays crisp. You may only use outline and wait gestures. Use 3 to 12 gestures.',
+  splash:'Your role is to splash. Your partner will read your ink and outline a form in it, so give them something to find: pour, sweep and tilt with abandon, and do not draw any form yourself. You may not use outline gestures. Use 1 to 5 gestures.',
+  free:'Respond to what is on the paper the way an ink painter responds to a splash: find a form, an echo, a tension, or an emptiness worth protecting. Do not try to illustrate anything literally; work with chance rather than against it. Use 1 to 5 gestures.'};
+function coarse(a,W,H,cols,rows){ const out=[]; for(let r=0;r<rows;r++){ let line=''; for(let c=0;c<cols;c++){ let sm=0,n=0;
+    for(let y=Math.floor(r*H/rows);y<Math.floor((r+1)*H/rows);y++) for(let x=Math.floor(c*W/cols);x<Math.floor((c+1)*W/cols);x++){ sm+=a[y*W+x]; n++; }
+    line+=String(Math.round(9*(n?sm/n:0))); } out.push(line); } return out.join('\n'); }
 function buildPrompt(ctx){
   const hist=aiHistory.slice(-3).map(h=>`Turn ${h.turn}: ${JSON.stringify(h.gestures)}`).join('\n')||'(none: this is your first turn)', {rules,extra}=rulesText(ctx.settings,ctx.words,ctx.strokes);
   return `You are one of two painters sharing one sheet of xuan (rice) paper in a turn-based splashed-ink (pomo) painting. You never speak. You act only through physical gestures, and the medium resists you: ink spreads through damp paper, follows the fibres unevenly, and runs downhill while the paper is tilted. ${rules} You cannot read your partner's mind.${extra}
 
 ${ctx.imageBlob?'The attached image is the paper as it is now. ':''}Below is a coarse darkness map of the paper (${ctx.cols} columns x ${ctx.rows} rows, 0 = blank paper, 9 = black ink; rows run top to bottom):
 ${ctx.grid}
-
+${ctx.wetGrid?`\nAnd how wet the paper is, on the same grid (0 = dry, 9 = standing water):\n${ctx.wetGrid}\n`:''}
 Coordinates for your gestures: x and y from 0 to 1, origin at the top-left corner of the paper. The paper's width:height ratio is ${ctx.aspect.toFixed(2)}.
 Your ink pot now: ${ctx.ink.toFixed(2)} (1 = scorched black, 0 = clear water; clear water poured onto damp ink breaks it up and pushes it outward).
 Your earlier gestures, oldest first:
 ${hist}
 
-Respond to what is on the paper the way an ink painter responds to a splash: find a form, an echo, a tension, or an emptiness worth protecting. Do not try to illustrate anything literally; work with chance rather than against it. Use 1 to 5 gestures.
+${ROLE_TEXT[ctx.role||'free']}
 
 Gesture types:
 {"type":"pour","x":0.5,"y":0.5,"seconds":1.5,"path":[[0.55,0.6],[0.6,0.7]]}  press and hold at (x,y) for 0.3 to 4 seconds; the optional path drags the pour through those points over that time. Longer pours spread wider.
 {"type":"stroke","path":[[0.2,0.3],[0.4,0.35],[0.6,0.5]],"seconds":1.5}  draw a line with the brush through those points (2 to 10 points) over 0.4 to 4 seconds. Its width and dryness come from how fast it moves, so a long path in a short time is thin and dry, and each line spends some of your pot.
+{"type":"outline","path":[[0.3,0.4],[0.35,0.38],[0.42,0.41]],"seconds":0.6}  draw a fine line with the outlining brush through those points (2 to 10 points). It stays thin, dark and fairly dry; it spends little ink.
 {"type":"tilt","dx":0,"dy":1,"seconds":1.5}  tilt the paper for 0.5 to 3 seconds; wet ink runs toward (dx,dy), each from -1 to 1, dy > 0 meaning toward the bottom. Dry ink does not move.
 {"type":"wait","seconds":2}  pause 0.5 to 4 seconds while the paper absorbs.
 
 Reply with only a JSON object of the form {"gestures":[...]}. No words, no explanation.`; }
-function sanitize(raw){
-  const list=Array.isArray(raw&&raw.gestures)?raw.gestures:(Array.isArray(raw)?raw:[]), out=[]; let total=0;
-  for(const g of list.slice(0,6)){ if(!g||typeof g!=='object') continue;
+function sanitize(raw,role){
+  let list=Array.isArray(raw&&raw.gestures)?raw.gestures:(Array.isArray(raw)?raw:[]); const out=[]; let total=0;
+  // the role decides which marks the partner may make: an outliner's lines are fine, a splasher cannot outline
+  if(role==='outline') list=list.filter(g=>g&&(g.type==='outline'||g.type==='stroke'||g.type==='wait')).map(g=>g.type==='stroke'?{...g,type:'outline'}:g);
+  else if(role==='splash') list=list.filter(Boolean).map(g=>g.type==='outline'?{...g,type:'stroke'}:g);
+  for(const g of list.slice(0,role==='outline'?14:6)){ if(!g||typeof g!=='object') continue;
     if(g.type==='pour'){ const secs=clampN(g.seconds,0.3,4), path=Array.isArray(g.path)?g.path.slice(0,8).filter(p=>Array.isArray(p)&&p.length>=2).map(p=>[r4(clampN(p[0],0,1)),r4(clampN(p[1],0,1))]):[];
       const o={type:'pour',x:r4(clampN(g.x,0,1)),y:r4(clampN(g.y,0,1)),seconds:r3(secs),path}; if(typeof g.ink==='number') o.ink=r3(clampN(g.ink,0,1)); out.push(o); total+=secs; }
-    else if(g.type==='stroke'){ const path=Array.isArray(g.path)?g.path.slice(0,10).filter(p=>Array.isArray(p)&&p.length>=2).map(p=>[r4(clampN(p[0],0,1)),r4(clampN(p[1],0,1))]):[];
-      if(path.length>=2){ const secs=clampN(g.seconds,0.4,4), o={type:'stroke',path,seconds:r3(secs)}; if(typeof g.ink==='number') o.ink=r3(clampN(g.ink,0,1)); out.push(o); total+=secs; } }
+    else if(g.type==='stroke'||g.type==='outline'){ const path=Array.isArray(g.path)?g.path.slice(0,10).filter(p=>Array.isArray(p)&&p.length>=2).map(p=>[r4(clampN(p[0],0,1)),r4(clampN(p[1],0,1))]):[];
+      if(path.length>=2){ const secs=clampN(g.seconds,0.3,4), o={type:g.type,path,seconds:r3(secs)}; if(g.type==='outline'&&typeof g.press==='number') o.press=r3(clampN(g.press,0.2,1)); if(typeof g.ink==='number') o.ink=r3(clampN(g.ink,0,1)); out.push(o); total+=secs; } }
     else if(g.type==='tilt'){ const secs=clampN(g.seconds,0.5,3); out.push({type:'tilt',dx:r3(clampN(g.dx,-1,1)),dy:r3(clampN(g.dy,-1,1)),seconds:r3(secs)}); total+=secs; }
     else if(g.type==='wait'){ const secs=clampN(g.seconds,0.5,4); out.push({type:'wait',seconds:r3(secs)}); total+=secs; }
-    if(total>16) break; }
+    if(total>(role==='outline'?20:16)) break; }
   return out; }
 function setPass(state){ const b=$('pass'); b.classList.toggle('busy',state!=='idle'); b.disabled=state!=='idle';
   b.textContent=state==='looking'?'Your partner is looking':state==='painting'?'Your partner is painting':'Pass the paper'; }
@@ -714,9 +850,9 @@ async function passPaper(again){
   emit('pa',{partner:activeName,words:words||undefined,sees:S.sees}); $('words').value=''; render();
   let gestures=[], prompt='';
   try{
-    const snap=await snapshotImage(), ctx={grid:snap.grid,cols:snap.cols,rows:snap.rows,imageBlob:snap.blob,aspect:cv.width/cv.height,ink:E.Cai,words,strokes,settings:S,history:aiHistory.slice()};
-    ctx.prompt=buildPrompt(ctx); prompt=ctx.prompt;
-    const res=await partner.turn(ctx); gestures=sanitize(res); }
+    const snap=await snapshotImage(), ctx={grid:snap.grid,cols:snap.cols,rows:snap.rows,imageBlob:snap.blob,aspect:cv.width/cv.height,ink:E.Cai,words,strokes,settings:S,history:aiHistory.slice(),role:partnerRole(S.roles),paper:paperMaps()};
+    ctx.wetGrid=coarse(ctx.paper.wet,ctx.paper.cols,ctx.paper.rows,snap.cols,snap.rows); ctx.prompt=buildPrompt(ctx); prompt=ctx.prompt;
+    const res=await partner.turn(ctx); gestures=sanitize(res,ctx.role); }
   catch(e){ const code=(e&&e.code)||'error';
     if(['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed'].includes(code)){ showHint('Your partner is not available in this view, so the paper stays with you.',6000); }
     else if(code==='rate_limited') showHint('Your partner needs a moment before the next turn. Try again later.',6000);
@@ -729,8 +865,10 @@ async function passPaper(again){
 $('pass').addEventListener('click',()=>passPaper(false));
 $('again').addEventListener('click',()=>{ if(againOK) passPaper(true); });
 $('undo').addEventListener('click',()=>{ if(live()&&!E.aiTurn&&snapStack.length){ flushPending(); emit('un',{}); refreshHud(); } });
-$('tool').addEventListener('click',()=>{ if(!live()||E.aiTurn||userCount()||ui.modal) return; flushPending(); emit('tl',{v:E.tool==='pour'?'brush':'pour'}); refreshHud(); });
-addEventListener('keydown',e=>{ if(e.target&&e.target.tagName==='INPUT') return; if((e.key==='b'||e.key==='p')&&live()&&!E.aiTurn&&!userCount()&&!ui.modal){ flushPending(); emit('tl',{v:e.key==='b'?'brush':'pour'}); refreshHud(); } });
+$('tool').addEventListener('click',()=>{ if(!live()||E.aiTurn||userCount()||ui.modal) return; const ok=TOOLS[userRole(E.settings.roles)]; if(ok.length<2) return;
+  flushPending(); emit('tl',{v:ok[(ok.indexOf(E.tool)+1)%ok.length]}); refreshHud(); });
+addEventListener('keydown',e=>{ if(e.target&&e.target.tagName==='INPUT') return; const v={b:'brush',p:'pour',o:'line'}[e.key];
+  if(v&&live()&&!E.aiTurn&&!userCount()&&!ui.modal&&TOOLS[userRole(E.settings.roles)].includes(v)){ flushPending(); emit('tl',{v}); refreshHud(); } });
 $('pot').addEventListener('click',()=>{ if(!live()||E.settings.ink!=='unlimited') return; let i=TONE_CYCLE.findIndex(c=>Math.abs(c-E.C)<0.03); i=(i+1)%TONE_CYCLE.length; emit('pot',{c:TONE_CYCLE[i]}); refreshHud(); });
 
 // ================= HUD and panels =================
@@ -740,8 +878,9 @@ function refreshHud(){
   const k=0.12+0.88*E.C, p=[236,230,214], q=[27,29,34], c=p.map((v,i)=>Math.round(v+(q[i]-v)*k));
   potEl.style.background=`rgb(${c[0]},${c[1]},${c[2]})`; potEl.disabled=S.ink!=='unlimited';
   for(const [t,name] of TONES){ if(E.C>t){ if(toneEl.textContent!==name) toneEl.textContent=name; break; } }
-  $('potHint').textContent=S.ink==='unlimited'?'tap to change tone':(E.tool==='brush'?'lift to re-dip':(S.ink==='scarce'?'it empties quickly':'pause to regrind'));
-  $('tool').textContent='Tool: '+(E.tool==='brush'?'Brush':'Pour'); $('tool').disabled=E.aiTurn||userCount()>0;
+  $('potHint').textContent=S.ink==='unlimited'?'tap to change tone':(E.tool!=='pour'?'lift to re-dip':(S.ink==='scarce'?'it empties quickly':'pause to regrind'));
+  const okT=TOOLS[userRole(S.roles)]; $('tool').textContent='Tool: '+TOOL_NAME[E.tool]; $('tool').disabled=E.aiTurn||userCount()>0||okT.length<2;
+  $('role').textContent={splash:'You splash',outline:'You outline',free:'Free'}[userRole(S.roles)]; $('role').title=KNOBS.roles.blurb[S.roles];
   $('words').hidden=S.words!=='on'||!activeName; $('undo').hidden=S.undo==='none'; $('undo').disabled=!snapStack.length||E.aiTurn;
   $('undo').textContent=snapStack.length?`Undo (${snapStack.length})`:'Undo';
   $('again').hidden=!(againOK&&S.redo==='redo'&&!E.aiTurn); $('pass').hidden=!activeName; $('fricBtn').hidden=LOCKED;
@@ -755,7 +894,7 @@ function renderGroups(){
     for(const [v,lab] of K.opts){ const b=document.createElement('button'); b.type='button'; b.className='opt'; b.textContent=lab; b.setAttribute('role','radio'); b.setAttribute('aria-checked',String(E.settings[key]===v));
       b.addEventListener('click',()=>{ if(!live()&&mode!=='boot') return; setKnob(key,v); }); seg.appendChild(b); }
     bl.textContent=K.blurb[E.settings[key]]; box.appendChild(g); } }
-function setKnob(k,v){ if(E.settings[k]===v) return; if(live()){ flushPending(); emit('k',{k,v}); } else E.settings[k]=v; renderGroups(); refreshHud(); }
+function setKnob(k,v){ if(E.settings[k]===v) return; if(live()){ flushPending(); emit('k',{k,v}); } else { E.settings[k]=v; if(k==='roles'){ const ok=TOOLS[userRole(v)]; if(!ok.includes(E.tool)) E.tool=ok[0]; } } renderGroups(); if(k==='roles') refreshPartners(); refreshHud(); }
 $('presetSeamful').addEventListener('click',()=>{ for(const k of Object.keys(KNOBS)) setKnob(k,DEFAULTS[k]); });
 $('presetSeamless').addEventListener('click',()=>{ for(const k of Object.keys(KNOBS)) setKnob(k,SEAMLESS[k]); });
 function fmtDur(s){ s=Math.round(s); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
@@ -784,7 +923,7 @@ $('sessImport').addEventListener('change',async e=>{ const f=e.target.files&&e.t
   catch(err){ showHint('That file is not a Splashed Ink session.',4000); } });
 function endAndShow(){ if(!session) return; closePanels(); flushPending(); for(const k of [...E.pointers.keys()]) if(k!=='ai'&&live()) emit('pu',{i:k});
   const s=finishSession(); running=false; mode='ended'; const m=s.summary, dl=$('sumStats'); dl.innerHTML='';
-  const rows=[['Time',fmtDur(m.seconds)],['Strokes',m.strokes],['Brush strokes',m.brushStrokes||0],['Time pouring',fmtDur(m.pourSeconds)],['First stroke after',m.firstStrokeAfterSeconds===null?'-':m.firstStrokeAfterSeconds+' s'],['Median pause',m.medianPauseSeconds===null?'-':m.medianPauseSeconds+' s'],['Undos',m.undos],['Partner turns',m.partnerTurns],['Partner redos',m.partnerRedos],['Words sent',m.wordsSent],['Setting changes',m.settingChanges]];
+  const rows=[['Time',fmtDur(m.seconds)],['Strokes',m.strokes],['Brush strokes',m.brushStrokes||0],['Outlines',m.outlineStrokes||0],['Partner outlines',m.partnerOutlines||0],['Time pouring',fmtDur(m.pourSeconds)],['First stroke after',m.firstStrokeAfterSeconds===null?'-':m.firstStrokeAfterSeconds+' s'],['Median pause',m.medianPauseSeconds===null?'-':m.medianPauseSeconds+' s'],['Undos',m.undos],['Partner turns',m.partnerTurns],['Partner redos',m.partnerRedos],['Words sent',m.wordsSent],['Setting changes',m.settingChanges]];
   for(const [a,b] of rows){ dl.insertAdjacentHTML('beforeend',`<dt>${a}</dt><dd>${b}</dd>`); }
   $('sumTitle').textContent=keepRecord?'Session saved':'Session ended'; $('summary').hidden=false; ui.modal=true; }
 $('sumReplay').addEventListener('click',()=>{ $('summary').hidden=true; startReplay(session); });
@@ -796,7 +935,7 @@ let rp=null;
 function startReplay(s){
   if(mode==='live'&&session&&!session.endedAt){ flushPending(); finishSession(); }
   closePanels(); $('summary').hidden=true; running=false; mode='replay'; endHold(); stick=null;
-  const [sw,sh]=s.device.sim; initSim(sw,sh,s.paperSeed); resetEngine(s.seed,sanitizeSettings(s.settings)); render();
+  const [sw,sh]=s.device.sim; initSim(sw,sh,s.paperSeed); resetEngine(s.seed,sanitizeSettings({roles:'free',...s.settings})); render();
   rp={s,idx:0,speed:4,end:s.endTick||(s.events.length?s.events[s.events.length-1].t+60:0)}; $('replayBar').hidden=false; $('intro').classList.add('gone');
   document.querySelectorAll('.hud').forEach(h=>h.classList.remove('on')); updateReplayBar(); requestAnimationFrame(replayFrame); }
 function updateReplayBar(){ $('replayInfo').textContent=`Replay ${fmtDur(E.tick/60)} / ${fmtDur(rp.end/60)}`;
@@ -823,7 +962,8 @@ function liveFrame(now){
   if((E.tick&7)===0) refreshHud();
   requestAnimationFrame(liveFrame); }
 function startLive(){ beginSession(); mode='live'; running=true; last=performance.now(); acc=0; slow=0; autosaveAt=0; refreshHud();
-  document.querySelectorAll('.hud').forEach(h=>h.classList.add('on')); $('intro').classList.add('gone'); renderGroups(); if(keepRecord) saveSession(); requestAnimationFrame(liveFrame); }
+  document.querySelectorAll('.hud').forEach(h=>h.classList.add('on')); $('intro').classList.add('gone'); renderGroups(); if(keepRecord) saveSession(); requestAnimationFrame(liveFrame); 
+  if(userRole(E.settings.roles)==='outline') setTimeout(()=>showHint('Your partner splashes first. <b>Pass the paper</b>, then outline what you find in its ink.',7000),900); }
 
 // ================= boot =================
 resizeCanvas();
@@ -846,8 +986,8 @@ window.__si={ get E(){return E;}, get session(){return session;}, get mode(){ret
   pd(id,x,y,p){ emit('pd',{i:id,x:r4(x),y:r4(y),p:p||0.5}); }, pm(id,x,y,p){ emit('pm',{i:id,x:r4(x),y:r4(y),p:p||0.5}); }, pu(id){ emit('pu',{i:id}); },
   g(x,y){ emit('g',{x:r3(x),y:r3(y)}); }, tool(v){ emit('tl',{v}); }, knob(k,v){ emit('k',{k,v}); }, undo(){ emit('un',{}); }, sheet(s){ emit('sh',{s}); }, pot(c){ emit('pot',{c}); },
   pass(gestures,words){ emit('pa',{partner:'test',words:words||undefined,sees:E.settings.sees}); emit('pg',{gestures}); }, redo(){ emit('rd',{}); },
-  finish(){ return finishSession(); }, draw(){ render(); }, snapDepth(){ return snapStack.length; },
-  replayHeadless(s){ if(mode==='live') running=false; const [sw,sh]=s.device.sim; initSim(sw,sh,s.paperSeed); resetEngine(s.seed,sanitizeSettings(s.settings)); let i=0; const ev=s.events,end=s.endTick;
+  finish(){ return finishSession(); }, draw(){ render(); }, paper(){ const m=paperMaps(); return {cols:m.cols,rows:m.rows,tone:Array.from(m.tone),wet:Array.from(m.wet)}; }, partner(name,ctx){ return window.InkPartners[name].turn(ctx); }, snapDepth(){ return snapStack.length; },
+  replayHeadless(s){ if(mode==='live') running=false; const [sw,sh]=s.device.sim; initSim(sw,sh,s.paperSeed); resetEngine(s.seed,sanitizeSettings({roles:'free',...s.settings})); let i=0; const ev=s.events,end=s.endTick;
     for(;;){ while(i<ev.length&&ev[i].t<=E.tick) applyEvent(ev[i++]); if(i>=ev.length&&E.tick>=end) break; engineTick(); } render(); return E.tick; } };
 })();
 </script>

@@ -116,7 +116,7 @@ Several events can share a tick; they apply in file order, before that tick's si
 | `pd` | `i`, `x`, `y`, `p` | a finger or pen goes down. `i` identifies the pointer (`u` plus the browser's id), `p` is pressure. It pours or draws with the brush, depending on the last `tl` event |
 | `pm` | `i`, `x`, `y`, `p` | it moves. At most one per pointer per tick, and only when it moved |
 | `pu` | `i` | it lifts |
-| `tl` | `v` | the person switches tool: `pour` (the default at the start of every session) or `brush` |
+| `tl` | `v` | the person switches tool: `pour`, `brush` or `line` (the outlining brush). A tool the current role does not allow is ignored. A session starts with the role's first tool: `pour` when you splash or anything goes, `line` when you outline. Changing `roles` to one that does not allow the current tool switches to that role's first tool |
 | `g` | `x`, `y` | the person's tilt target changes (each axis -0.8 to 0.8; positive y tilts toward the bottom) |
 | `k` | `k`, `v` | a friction setting changes |
 | `st` | `n` | simulation steps per tick change, on devices that cannot keep up. Rare |
@@ -131,6 +131,7 @@ Several events can share a tick; they apply in file order, before that tick's si
 
 A partner's `gestures` are `pour` (`x`, `y`, `seconds`, optional `path` of `[x, y]` points, optional `ink`),
 `stroke` (`path` of 2 to 10 `[x, y]` points, `seconds`, optional `ink`: a line drawn with the brush),
+`outline` (as `stroke`, plus optional `press`: a line drawn with the fine outlining brush),
 `tilt` (`dx`, `dy`, `seconds`) and `wait` (`seconds`).
 Their durations are turned into ticks, so a replay repeats them exactly.
 
@@ -158,7 +159,7 @@ the same physics but may differ in small details. Treat cross-device replays as 
 
 `summary` is computed from the events when a session ends. Fields: `seconds`, `strokes`, `pourSeconds`, `pathLength`
 (in screen widths), `firstStrokeAfterSeconds`, `medianPauseSeconds`, `longestPauseSeconds` (gaps between strokes),
-`brushStrokes` (how many of the strokes used the brush), `undos`, `partnerTurns`, `partnerRedos`, `partnerErrors`, `partnerGestureSeconds`, `wordsSent`, `newSheets`, `settingChanges`.
+`brushStrokes` and `outlineStrokes` (how many of the person's strokes used the brush or the outlining brush), `partnerOutlines` and `partnerSplashes` (the partner's outline gestures, and its pour and stroke gestures), `undos`, `partnerTurns`, `partnerRedos`, `partnerErrors`, `partnerGestureSeconds`, `wordsSent`, `newSheets`, `settingChanges`.
 It is a convenience, not a substitute for analysing the events.
 
 ### Privacy

@@ -54,13 +54,14 @@ DETERMINISM = """
   si.undo();
   const after = si.density();
   out.undoExact = before.every((v, i) => v === after[i]);
-  si.step(20); si.tool('brush'); si.pd('b1', 0.2, 0.8, 0.5); for (let i = 1; i <= 25; i++) { si.step(1); si.pm('b1', 0.2 + i * 0.02, 0.8 - Math.sin(i / 5) * 0.05, 0.5); } si.pu('b1'); si.step(10); si.tool('pour');
+  si.step(20); si.tool('brush'); si.pd('b1', 0.2, 0.8, 0.5); for (let i = 1; i <= 25; i++) { si.step(1); si.pm('b1', 0.2 + i * 0.02, 0.8 - Math.sin(i / 5) * 0.05, 0.5); } si.pu('b1'); si.step(10);
+  si.knob('roles', 'free'); si.tool('line'); si.pd('l1', 0.25, 0.3, 0.5); for (let i = 1; i <= 15; i++) { si.step(1); si.pm('l1', 0.25 + i * 0.03, 0.3 + i * 0.01, 0.6); } si.pu('l1'); si.step(5); si.tool('pour');
   si.g(0.1, 0.7); si.step(40); si.g(0, 0);
   si.knob('ink', 'unlimited'); si.pot(0.45);
   si.pd('u3', 0.7, 0.5, 0.5); for (let i = 1; i <= 12; i++) { si.step(2); si.pm('u3', 0.7 - i * 0.02, 0.5 + i * 0.01, 0.5); } si.pu('u3');
   si.knob('drying', 'fast'); si.step(25); si.sheet(12345); si.step(5);
   si.pd('u4', 0.4, 0.4, 0.5); for (let i = 1; i <= 10; i++) { si.step(2); si.pm('u4', 0.4, 0.4 + i * 0.02, 0.5); } si.pu('u4'); si.step(10);
-  si.pass([{type:'pour',x:0.6,y:0.3,seconds:0.5,path:[[0.7,0.35]],ink:0.8},{type:'stroke',path:[[0.2,0.2],[0.5,0.3],[0.8,0.2]],seconds:0.8},{type:'tilt',dx:0.3,dy:1,seconds:0.5},{type:'wait',seconds:0.5}], 'a few words');
+  si.pass([{type:'pour',x:0.6,y:0.3,seconds:0.5,path:[[0.7,0.35]],ink:0.8},{type:'stroke',path:[[0.2,0.2],[0.5,0.3],[0.8,0.2]],seconds:0.8},{type:'outline',path:[[0.3,0.6],[0.5,0.62],[0.6,0.7]],seconds:0.5,press:0.7},{type:'tilt',dx:0.3,dy:1,seconds:0.5},{type:'wait',seconds:0.5}], 'a few words');
   let g = 0; while (si.E.actor && g++ < 400) si.step(1);
   out.partnerFinished = !si.E.actor && !si.E.aiTurn;
   si.step(15); si.redo(); si.pass([{type:'pour',x:0.3,y:0.7,seconds:0.5,path:[]}]);
@@ -128,6 +129,16 @@ async (name) => {
   out.finished = !si.E.aiTurn; return out;
 }
 """
+ROLES = """
+() => { const si = window.__si, out = {};
+  si.start(); out.defaultRole = si.E.settings.roles; si.tool('line'); out.triedLine = si.E.tool; si.tool('brush'); out.brushOK = si.E.tool;
+  si.knob('roles', 'partner-splash'); out.afterSwitch = si.E.tool;
+  si.knob('roles', 'free'); si.tool('pour'); si.pd('w', 0.5, 0.5, 0.5); si.step(60); si.pu('w'); si.step(10);
+  const wet = () => si.paper().wet.filter(v => v > 0.05).length; out.wetAfter = wet(); si.step(900); out.wetLater = wet();
+  const area = tool => { si.start(); si.knob('roles', 'free'); si.knob('ink', 'unlimited'); si.pot(1); si.tool(tool); si.pd('s', 0.2, 0.5, 0.5);
+    for (let i = 1; i <= 30; i++) { si.step(1); si.pm('s', 0.2 + i * 0.02, 0.5, 0.5); } si.pu('s'); si.step(120); return si.density().filter(v => v > 38).length; };
+  out.brushArea = area('brush'); out.lineArea = area('line'); return out; }
+"""
 SPEC_PAINT = """
 () => { const c = document.createElement('canvas'); c.width = 300; c.height = 400; const x = c.getContext('2d');
   x.fillStyle = '#e6dcc4'; x.fillRect(0, 0, 300, 400); x.fillStyle = '#25262a'; x.beginPath(); x.ellipse(150, 170, 90, 50, 0.3, 0, 7); x.fill();
@@ -171,10 +182,10 @@ with sync_playwright() as pw:
         ctx = browser.new_context(viewport={"width": 200, "height": 300})
         ctx.add_init_script("window.InkPartners={test:{label:'Test',async turn(c){window.__ctx=c;return {gestures:[{type:'pour',x:0.5,y:0.5,seconds:0.4,path:[]}]};}}};")
         p2 = ctx.new_page(); p2.set_default_timeout(280000)
-        p2.goto(SI + "?words=on&sees=paper%2Bstrokes"); p2.wait_for_timeout(600)
+        p2.goto(SI + "?words=on&sees=paper%2Bstrokes&roles=free"); p2.wait_for_timeout(600)
         r = p2.evaluate(PARTNER)
         check("the partner is told the person's words and strokes when allowed", r["hasWords"] and r["hasStrokes"] and r["strokes"] == 2 and r["finished"], str(r))
-        p3 = ctx.new_page(); p3.goto(SI); p3.wait_for_timeout(500)
+        p3 = ctx.new_page(); p3.goto(SI + "?roles=free"); p3.wait_for_timeout(500)
         p3.evaluate("document.getElementById('words').value='secret'"); p3.evaluate("document.getElementById('start').click()"); p3.wait_for_timeout(400)
         p3.evaluate("window.__si.pd('a',0.3,0.3,0.5); window.__si.pu('a')"); p3.evaluate("(()=>{const s=document.getElementById('partnerSel'); s.value='test'; s.dispatchEvent(new Event('change'));})()"); p3.evaluate("document.getElementById('pass').click()")
         for _ in range(50):
@@ -189,7 +200,7 @@ with sync_playwright() as pw:
 
         # --- built-in partners, no backend
         for name in ("echo", "counterweight", "chance"):
-            bp = browser.new_page(viewport={"width": 200, "height": 300}); bp.set_default_timeout(120000); bp.goto(SI); bp.wait_for_timeout(600)
+            bp = browser.new_page(viewport={"width": 200, "height": 300}); bp.set_default_timeout(120000); bp.goto(SI + "?roles=free"); bp.wait_for_timeout(600)
             r = bp.evaluate(BUILTIN, name); g = r["gestures"] or []
             ok = r["finished"] and len(g) > 0 and {"echo", "counterweight", "chance"} <= set(r["options"])
             if name == "echo":
@@ -199,10 +210,27 @@ with sync_playwright() as pw:
             check(f"the built-in partner '{name}' answers with no backend", ok, json.dumps(g)[:90])
             bp.close()
         bp = browser.new_page(viewport={"width": 200, "height": 300}); bp.set_default_timeout(120000)
-        bp.add_init_script("window.__brush = true;"); bp.goto(SI); bp.wait_for_timeout(600)
+        bp.add_init_script("window.__brush = true;"); bp.goto(SI + "?roles=free"); bp.wait_for_timeout(600)
         r = bp.evaluate(BUILTIN, "echo"); g = r["gestures"] or []
         check("Echo answers a brush stroke with a brush stroke", r["finished"] and g and g[0]["type"] == "stroke" and abs(g[0]["path"][0][0] - 0.8) < 0.01, json.dumps(g)[:90])
         bp.close()
+
+        # --- roles: one splashes, the other outlines
+        rp = browser.new_page(viewport={"width": 240, "height": 360}); rp.set_default_timeout(200000); rp.goto(SI); rp.wait_for_timeout(600)
+        t = rp.evaluate(ROLES)
+        check("by default you splash and cannot outline", t["defaultRole"] == "you-splash" and t["triedLine"] == "pour" and t["brushOK"] == "brush", str(t))
+        check("switching to 'partner splashes' gives you only the outlining brush", t["afterSwitch"] == "line", str(t))
+        check("wet paper is visible to a partner and dries", t["wetAfter"] > 20 and t["wetLater"] < t["wetAfter"] * 0.2, f"{t['wetAfter']} wet cells, {t['wetLater']} later")
+        check("a fine outline is narrower than a brush stroke", 0 < t["lineArea"] < 0.5 * t["brushArea"], f"{t['lineArea']} vs {t['brushArea']}")
+        rp.close()
+        rp = browser.new_page(viewport={"width": 240, "height": 360}); rp.set_default_timeout(200000); rp.goto(SI); rp.wait_for_timeout(600)
+        r = rp.evaluate(BUILTIN, "reader"); g = r["gestures"] or []
+        check("Reader answers a splash only with outlines", r["finished"] and len(g) >= 2 and all(x["type"] in ("outline", "wait") for x in g) and r["options"][0] == "reader", json.dumps(g)[:120])
+        rp.close()
+        rp = browser.new_page(viewport={"width": 240, "height": 360}); rp.set_default_timeout(200000); rp.goto(SI + "?roles=partner-splash"); rp.wait_for_timeout(600)
+        r = rp.evaluate(BUILTIN, "splasher"); g = r["gestures"] or []
+        check("Splasher pours and never outlines", r["finished"] and g and not any(x["type"] == "outline" for x in g) and r["options"][0] == "splasher", json.dumps(g)[:120])
+        rp.close()
 
     if RUN_MC:
         # --- 6. Machine Copy

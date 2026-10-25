@@ -13,6 +13,8 @@ Three partners ship with the app and are registered the same way, so they also s
 | `chance` | nothing | one or two random pours, sometimes a brush stroke and a tilt |
 | `counterweight` | the paper (`ctx.grid`) | a pour at the emptiest spot opposite the ink's centre of mass, then a tilt toward the ink |
 | `echo` | your last stroke (`ctx.strokes`), or the darkest spot if strokes are not shared | that stroke mirrored left to right, drawn with the same tool you used |
+| `reader` | the paper up close (`ctx.paper`): tone and wetness | outlines. It cuts each blot into lobes where it narrows (as Machine Copy does with paintings), favours lobes that are new since its last turn, and for each draws part of an edge (never all of it), a vein along a long lobe with a few side veins, or spokes from a hub in a round one, and sometimes a stalk with thorns down into empty paper. Into a lobe that is still wet it usually lays the veins first, so they bloom, then waits and draws the edge crisp. The default partner when you splash |
+| `splasher` | the paper (`ctx.paper`) | one or two dragged pours near the ink's centre (anywhere on a blank sheet), sometimes a slow broad brush sweep and a tilt. It never outlines. The default partner when you outline |
 
 Together they make a ladder of how much the partner understands, which is useful as comparison conditions next to Claude or a model of your own.
 Claude is registered as `claude` when the page runs inside claude.ai, and is listed first. Your own entries are listed after the built-in ones.
@@ -46,7 +48,9 @@ If more than one partner is registered, a selector appears next to the "Pass the
 | `ctx.aspect` | width divided by height of the sheet |
 | `ctx.ink` | the partner's ink pot, 0 (clear water) to 1 (scorched) |
 | `ctx.words` | the person's note (empty unless words are on and the person wrote something) |
-| `ctx.strokes` | the person's recent strokes, or `null` unless "sees" is `paper+strokes`. Each has `tool` (`pour` or `brush`), `start`, `seconds`, `pause`, `length` and `path` |
+| `ctx.strokes` | the person's recent strokes, or `null` unless "sees" is `paper+strokes`. Each has `tool` (`pour`, `brush` or `line`), `start`, `seconds`, `pause`, `length` and `path` |
+| `ctx.paper` | the paper up close: `{cols, rows, tone, wet}`, about 120 cells on the short side, row 0 at the top. `tone` is 0 (blank) to 1 (black); `wet` is 0 (dry) to 1 (standing water) |
+| `ctx.role` | what this partner may do: `outline` (the person splashed; answer only with `outline` and `wait`), `splash` (no `outline`), or `free` |
 | `ctx.settings` | the friction settings in force |
 | `ctx.history` | the partner's earlier gestures this session |
 | `ctx.prompt` | a ready-made text prompt for a language model, built from all of the above |
@@ -58,16 +62,19 @@ It returns (or resolves to) `{ gestures: [...] }`. Throw an error with a `code` 
 ```json
 { "type": "pour", "x": 0.5, "y": 0.5, "seconds": 1.5, "path": [[0.55, 0.6], [0.6, 0.7]], "ink": 0.8 }
 { "type": "stroke", "path": [[0.2, 0.3], [0.4, 0.35], [0.6, 0.5]], "seconds": 1.5 }
+{ "type": "outline", "path": [[0.3, 0.4], [0.35, 0.38], [0.42, 0.41]], "seconds": 0.6, "press": 0.7 }
 { "type": "tilt", "dx": 0, "dy": 1, "seconds": 1.5 }
 { "type": "wait", "seconds": 2 }
 ```
 
 * `pour`: hold the brush at (`x`, `y`) for `seconds` (0.3 to 4). The optional `path` drags it through those points. `ink` (0 to 1) is only used when ink is unlimited.
 * `stroke`: draw a line with the brush through 2 to 10 points over 0.4 to 4 seconds. A partner does not choose the width: it comes from how fast the brush moves, exactly as for a person. A long path in a short time is thin and dry; the brush also spends ink as it travels. `ink` is only used when ink is unlimited.
+* `outline`: draw with the fine outlining brush (勾) through 2 to 10 points over 0.3 to 4 seconds. Thin, dense and fairly dry; it spends little ink. It swells in the middle and lifts at both ends; `press` (0.2 to 1, default 0.8) is how hard it presses at the middle. On wet paper the line blooms; on dry paper it stays crisp.
 * `tilt`: tilt the paper toward (`dx`, `dy`), each -1 to 1, for 0.5 to 3 seconds.
 * `wait`: pause for 0.5 to 4 seconds.
 
-At most 6 gestures are used, and gestures stop being added once their durations pass about 16 seconds. Coordinates are clamped to the sheet.
+At most 6 gestures are used (14 for an outlining partner), and gestures stop being added once their durations pass about 16 seconds (20 when outlining).
+The role filters the answer: an outlining partner's `stroke`s become `outline`s and its pours and tilts are dropped; a splashing partner's `outline`s become `stroke`s. Coordinates are clamped to the sheet.
 A partner uses the same ink, paper and physics as the person. It cannot place ink directly, only move a brush.
 
 ## What happens next

@@ -12,6 +12,7 @@ Most generative tools are built to be as seamless as possible. This piece asks w
 
 | Setting | Values | What it changes | What it takes away, or gives back |
 |---|---|---|---|
+| **Who does what** | `you-splash` · `partner-splash` · `free` | you-splash: you pour and brush, your partner may only outline. partner-splash: your partner pours first and you may only outline. free: both may do anything | the division of labour in 泼墨: one throws ink and gives up control, the other reads it and gives it form. With `free`, the two hands do the same job and the turn stops being an answer |
 | **Undo** | `none` · `one` · `unlimited` | none: nothing can be taken back. one: the last stroke. unlimited: up to 12 strokes, one after another | commitment. With unlimited undo, no single stroke needs to be decided |
 | **Paper drying** | `slow` · `normal` · `fast` · `instant` | multiplies how fast water leaves the paper (0.35x, 1x, 4x, instant) | time. Slow paper keeps running and blooming; instant paper keeps exactly what you put down |
 | **Ink supply** | `scarce` · `normal` · `unlimited` | scarce: the pot empties twice as fast and refills at half speed. normal: the original behaviour. unlimited: it never empties, and tapping the pot cycles tone. Pouring spends ink with time; the brush spends it with distance, and re-dips quickly when lifted | a limit that shapes rhythm. Unlimited ink brings back a tone picker |
@@ -21,8 +22,8 @@ Most generative tools are built to be as seamless as possible. This piece asks w
 
 ## Presets
 
-* **Seamful** (the default) is the piece as designed: `undo none, drying normal, ink normal, words off, sees paper, redo final`.
-* **Seamless** removes each resistance: `undo unlimited, drying instant, ink unlimited, words on, sees paper+strokes, redo redo`.
+* **Seamful** (the default) is the piece as designed: `roles you-splash, undo none, drying normal, ink normal, words off, sees paper, redo final`.
+* **Seamless** removes each resistance: `roles free, undo unlimited, drying instant, ink unlimited, words on, sees paper+strokes, redo redo`.
 
 The two are ends of a scale, not a recommendation. Settings can be mixed freely, which is the useful part for comparing conditions.
 
@@ -33,7 +34,7 @@ Parameters in the URL set the starting values. This is meant for running conditi
 | Parameter | Example | Effect |
 |---|---|---|
 | `preset` | `?preset=seamless` | start from a preset |
-| `undo`, `drying`, `ink`, `words`, `sees`, `redo` | `?undo=one&drying=fast` | set one setting. These override `preset` |
+| `roles`, `undo`, `drying`, `ink`, `words`, `sees`, `redo` | `?roles=partner-splash&undo=one` | set one setting. These override `preset` |
 | `lock` | `?lock=1` | hide the Friction button so the person cannot change anything |
 | `record` | `?record=0` | do not save sessions in the browser |
 
