@@ -20,7 +20,7 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTISTS = ["Bada Shanren", "Xu Wei", "Shitao", "Chen Chun", "Li Shan", "Li Fangying", "Huang Shen", "Gao Fenghan", "Gao Qipei",
-           "Xugu", "Ren Yi", "Wu Changshuo", "Zhao Zhiqian", "Shen Zhou", "Zhu Da", "Jin Nong", "Luo Pin", "Wang Mian", "Mu Qi", "Liang Kai"]
+           "Xugu", "Ren Yi", "Wu Changshuo", "Zhao Zhiqian", "Shen Zhou", "Zhu Da", "Jin Nong", "Luo Pin", "Wang Mian", "Muqi", "Liang Kai", "Yujian", "Wu Zhen", "Xu Ben", "Lan Ying"]
 UA = {"User-Agent": "splashed-ink-library-builder (https://github.com/Lee-arts-02/Splashed-Ink)"}
 FLAGS = ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"]
 

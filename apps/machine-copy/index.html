@@ -869,7 +869,7 @@ async function* fromMet(name,diag){
     const imgs=[o.primaryImageSmall,...(o.additionalImages||[]).map(u=>u.replace('/original/','/web-large/'))].filter(Boolean).slice(0,12);
     if(!imgs.length){ diag.noImage++; continue; }
     for(let k=0;k<imgs.length;k++) yield {src:imgs[k], meta:{title:o.title+(imgs.length>1?` (image ${k+1})`:''),artist:o.artistDisplayName,date:o.objectDate,source:'The Metropolitan Museum of Art',url:o.objectURL,image:imgs[k],license:'CC0 (The Met Open Access)'}}; } }
-const ARTISTS=(P.get('artists')||'Bada Shanren|Xu Wei|Shitao|Chen Chun|Li Shan|Li Fangying|Huang Shen|Gao Fenghan|Gao Qipei|Xugu|Ren Yi|Wu Changshuo|Zhao Zhiqian|Shen Zhou|Zhu Da').split('|');
+const ARTISTS=(P.get('artists')||'Bada Shanren|Xu Wei|Shitao|Chen Chun|Li Shan|Li Fangying|Huang Shen|Gao Fenghan|Gao Qipei|Xugu|Ren Yi|Wu Changshuo|Zhao Zhiqian|Shen Zhou|Zhu Da|Muqi|Liang Kai|Wang Mian').split('|');
 libEl.met.addEventListener('click',async()=>{
   libBusy=true; libHalt=false; libRefresh(); const seen=new Set(lib.paintings.map(p=>p.image)), D={};
   for(const [src,gen] of [['Cleveland',fromCleveland],['The Met',fromMet]]){
