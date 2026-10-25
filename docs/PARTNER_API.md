@@ -4,6 +4,19 @@ A partner is the other painter. In the hosted copy inside claude.ai the built-in
 which is also how you would add a comparison condition: a small model that continues strokes, a mirror that repeats the person's habits,
 or a random painter as a control.
 
+## Built-in partners
+
+Three partners ship with the app and are registered the same way, so they also show how to write one. They are rules, not AI.
+
+| Key | Reads | Answers with |
+|---|---|---|
+| `chance` | nothing | one or two random pours, sometimes a brush stroke and a tilt |
+| `counterweight` | the paper (`ctx.grid`) | a pour at the emptiest spot opposite the ink's centre of mass, then a tilt toward the ink |
+| `echo` | your last stroke (`ctx.strokes`), or the darkest spot if strokes are not shared | that stroke mirrored left to right, drawn with the same tool you used |
+
+Together they make a ladder of how much the partner understands, which is useful as comparison conditions next to Claude or a model of your own.
+Claude is registered as `claude` when the page runs inside claude.ai, and is listed first. Your own entries are listed after the built-in ones.
+
 ## Registering one
 
 Before the page's script runs (or at any time before the person presses Start), put an object on `window.InkPartners`:
@@ -33,7 +46,7 @@ If more than one partner is registered, a selector appears next to the "Pass the
 | `ctx.aspect` | width divided by height of the sheet |
 | `ctx.ink` | the partner's ink pot, 0 (clear water) to 1 (scorched) |
 | `ctx.words` | the person's note (empty unless words are on and the person wrote something) |
-| `ctx.strokes` | the person's recent strokes, or `null` unless "sees" is `paper+strokes`. Each has `start`, `seconds`, `pause`, `length` and `path` |
+| `ctx.strokes` | the person's recent strokes, or `null` unless "sees" is `paper+strokes`. Each has `tool` (`pour` or `brush`), `start`, `seconds`, `pause`, `length` and `path` |
 | `ctx.settings` | the friction settings in force |
 | `ctx.history` | the partner's earlier gestures this session |
 | `ctx.prompt` | a ready-made text prompt for a language model, built from all of the above |
@@ -44,11 +57,13 @@ It returns (or resolves to) `{ gestures: [...] }`. Throw an error with a `code` 
 
 ```json
 { "type": "pour", "x": 0.5, "y": 0.5, "seconds": 1.5, "path": [[0.55, 0.6], [0.6, 0.7]], "ink": 0.8 }
+{ "type": "stroke", "path": [[0.2, 0.3], [0.4, 0.35], [0.6, 0.5]], "seconds": 1.5 }
 { "type": "tilt", "dx": 0, "dy": 1, "seconds": 1.5 }
 { "type": "wait", "seconds": 2 }
 ```
 
 * `pour`: hold the brush at (`x`, `y`) for `seconds` (0.3 to 4). The optional `path` drags it through those points. `ink` (0 to 1) is only used when ink is unlimited.
+* `stroke`: draw a line with the brush through 2 to 10 points over 0.4 to 4 seconds. A partner does not choose the width: it comes from how fast the brush moves, exactly as for a person. A long path in a short time is thin and dry; the brush also spends ink as it travels. `ink` is only used when ink is unlimited.
 * `tilt`: tilt the paper toward (`dx`, `dy`), each -1 to 1, for 0.5 to 3 seconds.
 * `wait`: pause for 0.5 to 4 seconds.
 

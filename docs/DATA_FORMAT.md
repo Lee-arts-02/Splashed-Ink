@@ -113,9 +113,10 @@ Several events can share a tick; they apply in file order, before that tick's si
 
 | `e` | fields | meaning |
 |---|---|---|
-| `pd` | `i`, `x`, `y`, `p` | a finger or pen goes down. `i` identifies the pointer (`u` plus the browser's id), `p` is pressure |
+| `pd` | `i`, `x`, `y`, `p` | a finger or pen goes down. `i` identifies the pointer (`u` plus the browser's id), `p` is pressure. It pours or draws with the brush, depending on the last `tl` event |
 | `pm` | `i`, `x`, `y`, `p` | it moves. At most one per pointer per tick, and only when it moved |
 | `pu` | `i` | it lifts |
+| `tl` | `v` | the person switches tool: `pour` (the default at the start of every session) or `brush` |
 | `g` | `x`, `y` | the person's tilt target changes (each axis -0.8 to 0.8; positive y tilts toward the bottom) |
 | `k` | `k`, `v` | a friction setting changes |
 | `st` | `n` | simulation steps per tick change, on devices that cannot keep up. Rare |
@@ -129,6 +130,7 @@ Several events can share a tick; they apply in file order, before that tick's si
 | `pr` | `partner`, `prompt` | a record of what was sent to the partner. Not needed to replay |
 
 A partner's `gestures` are `pour` (`x`, `y`, `seconds`, optional `path` of `[x, y]` points, optional `ink`),
+`stroke` (`path` of 2 to 10 `[x, y]` points, `seconds`, optional `ink`: a line drawn with the brush),
 `tilt` (`dx`, `dy`, `seconds`) and `wait` (`seconds`).
 Their durations are turned into ticks, so a replay repeats them exactly.
 
@@ -156,7 +158,7 @@ the same physics but may differ in small details. Treat cross-device replays as 
 
 `summary` is computed from the events when a session ends. Fields: `seconds`, `strokes`, `pourSeconds`, `pathLength`
 (in screen widths), `firstStrokeAfterSeconds`, `medianPauseSeconds`, `longestPauseSeconds` (gaps between strokes),
-`undos`, `partnerTurns`, `partnerRedos`, `partnerErrors`, `partnerGestureSeconds`, `wordsSent`, `newSheets`, `settingChanges`.
+`brushStrokes` (how many of the strokes used the brush), `undos`, `partnerTurns`, `partnerRedos`, `partnerErrors`, `partnerGestureSeconds`, `wordsSent`, `newSheets`, `settingChanges`.
 It is a convenience, not a substitute for analysing the events.
 
 ### Privacy

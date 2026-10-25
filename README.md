@@ -38,7 +38,7 @@ Where there is no tilt sensor, drag the dot at the top right (or use the arrow k
 ## Splashed Ink
 
 **Play.** Press and hold to pour. The more you pour, the paler the ink; pause and it darkens again. Tilt to let wet ink run.
-Hold *new sheet* for a moment to start again. Pass the paper to a partner, who looks at it, then paints in the same ink with the same physics.
+Switch **Tool** to *Brush* (or press B; P for pour) to draw lines. The brush is thick, wet and dark when you move it slowly and thin, dry and pale when you move it fast, and it runs out of ink as it travels; lift it and pause to dip again. Hold *new sheet* for a moment to start again. Pass the paper to a partner, who looks at it, then paints in the same ink with the same physics.
 The partner never speaks; it answers with a few brush gestures.
 
 **Friction.** The *Friction* button opens six settings. [Details and rationale in docs/FRICTION.md.](docs/FRICTION.md)
@@ -58,9 +58,11 @@ The partner never speaks; it answers with a few brush gestures.
 The *Session* panel lists saved sessions, ends and summarises the current one (strokes, pauses, undos, partner turns), and replays any session at 1x, 4x or 16x.
 Recording can be turned off. [Format in docs/DATA_FORMAT.md.](docs/DATA_FORMAT.md)
 
-**Partners.** Inside claude.ai the built-in partner is Claude. Anywhere else, plug in your own with a few lines of JavaScript:
-a model that continues strokes, a mirror of the person's habits, a random painter as a control.
-[docs/PARTNER_API.md.](docs/PARTNER_API.md)
+**Partners.** Three simple partners are built in and need no backend. They are rules, not AI, and are labelled that way:
+*Chance* answers at random and reads nothing; *Counterweight* reads the paper and paints on the opposite side, then tilts toward the ink;
+*Echo* mirrors your last stroke, but only when "What your partner sees" lets it see how you drew. Inside claude.ai, Claude appears first in the list.
+To add your own with a few lines of JavaScript (a model that continues strokes, a mirror of the person's habits), see [docs/PARTNER_API.md](docs/PARTNER_API.md).
+On GitHub Pages there is no Claude partner, only these.
 
 **Conditions for a study.** Settings can be fixed from the address bar, for example
 `apps/splashed-ink/?undo=none&drying=normal&words=off&sees=paper&redo=final&lock=1`. Parameters are listed in [docs/FRICTION.md](docs/FRICTION.md).
@@ -98,8 +100,9 @@ python tests/run_checks.py
 ```
 
 The checks record a scripted session and replay it, compare the two pictures pixel by pixel, test that each friction setting does what it says,
-test what a partner is and is not told, and run Machine Copy end to end on a synthetic image. They use software rendering so they also run without a GPU.
-They take a few minutes.
+test that the brush gets wider and wetter the slower it moves, spends ink by distance and refills when lifted, test what a partner is and is not told,
+and run Machine Copy end to end on a synthetic image. They use software rendering so they also run without a GPU, which makes them slow:
+run `python tests/run_checks.py --splashed` and `--machine-copy` separately if you prefer.
 
 ## What to know before relying on it
 
@@ -108,8 +111,9 @@ They take a few minutes.
 * **The ink model is tuned by eye**, not fitted to real ink. It has no momentum: ink spreads and runs downhill but is never thrown.
   Making ink rush ahead of a fast stroke would need a velocity field, which is the main thing missing. [Limits in docs/INK_MODEL.md.](docs/INK_MODEL.md)
 * **Machine Copy infers; it does not recover.** Stroke order and direction are heuristics, not the painter's real order. Positions, widths and tones
-  are measured at the analysis resolution, not the image's own. The "percent of the way there" figure is a pixel-by-pixel score that favours matching broad tone
-  and under-rewards fine lines. The data file says which fields are measured and which are assumed.
+  are measured at the analysis resolution, not the image's own. When a copy finishes it reports two numbers instead of one: tone error (mean difference where
+  either image has ink, split into too dark and too light) and line recall/precision (centrelines of the copy matched against the original's within
+  about 1.5 cells). A single pixel score favoured broad tone and hid lost lines. The data file says which fields are measured and which are assumed.
 * **Verification status.** The checks above cover determinism, the friction settings, the data formats and an end-to-end Machine Copy run on a synthetic image.
   Machine Copy's Standard and Fine detail levels on real paintings were checked on cropped regions and at low resolution, not end to end at full size,
   and the wet/dry classification and dry-brush look have not been tested across many paintings. Please report what you see.
@@ -123,7 +127,6 @@ They take a few minutes.
 
 * Pull the ink simulation into one small shared library; the two apps currently carry slightly different copies of the step function.
 * Add momentum to the simulation so ink can be thrown and rush ahead of a stroke. Splashed Ink would gain the most.
-* Give Splashed Ink the stroke vocabulary Machine Copy extracts: lines of varying width, dry brush.
 * Comparison partners: a small sequence model trained on exported plans, and a mirror that repeats the person's own habits.
 * A Chinese-language interface.
 

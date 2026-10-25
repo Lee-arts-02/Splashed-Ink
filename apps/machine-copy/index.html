@@ -339,16 +339,20 @@ function dpKeep(pts,eps){
     if(md>eps){ keep[mi]=1; rec(a,mi); rec(mi,b); } };
   rec(0,n-1); const idx=[]; for(let i=0;i<n;i++) if(keep[i]) idx.push(i); return idx; }
 
+// Lines are what a grey opening removes: dark structures narrower than ~2*ro. Shared by the plan and the score.
+function lineSkeleton(T,W,H){
+  const ro=Math.max(3,Math.round(0.018*Math.min(W,H)));
+  const op=morph(morph(T,W,H,ro,false),W,H,ro,true);
+  const mask=new Uint8Array(W*H); for(let j=0;j<W*H;j++) mask[j]=(T[j]-op[j])>0.12?1:0;
+  dropSmall(mask,W,H,5);
+  return {ro,op,mask,sk:thin(mask,W,H)}; }
+
 // Splits a target ink map T (0..1) into washes (discs) and strokes (centre lines with width).
 function buildPlan(T,W,H,Tf,FW,FH){
   const t0=performance.now(); const R=brushR(W,H);
   const sx=FW/W, sy=FH/H;
-  const ro=Math.max(3,Math.round(0.018*Math.min(W,H)));
-  const op=morph(morph(T,W,H,ro,false),W,H,ro,true);                  // grey opening: keeps what is wider than ~2*ro
   // ---- strokes: thin dark structures
-  const mask=new Uint8Array(W*H); for(let j=0;j<W*H;j++) mask[j]=(T[j]-op[j])>0.12?1:0;
-  dropSmall(mask,W,H,5);
-  const sk=thin(mask,W,H), dtM=edt(mask,W,H);
+  const {ro,op,mask,sk}=lineSkeleton(T,W,H), dtM=edt(mask,W,H);
   const paths=traceSkeleton(sk,W,H);
   const strokes=[];
   for(const path of paths){
@@ -613,13 +617,29 @@ function* execute(s,pl,seed){
 
 // ---------------- driver ----------------
 const btn={run:$('run'),stop:$('stop'),replay:$('replay'),export:$('export'),detail:$('detail')};
-let job=null, lastShown=0, result='';
+let job=null, lastShown=0, result='', lastScore=null;
 function setBusy(b){ btn.run.disabled=b||!T; btn.stop.disabled=!b; btn.replay.disabled=b||!sim||!plan; btn.export.disabled=b||!plan; btn.detail.disabled=b; }
-function similarity(){ const D=simDensity(sim); let e=0,e0=0; for(let j=0;j<D.length;j++){ const d=D[j]-T[j]; e+=d>0?d*d*2:d*d; e0+=T[j]*T[j]; } return e0>0?1-e/e0:0; }
+// Two separate measures, because one pixel score rewards broad tone and hides lost lines.
+// tone: mean |copy - original| over cells where either has ink (0 = identical), plus how much of it is too dark vs too light.
+// lines: centrelines of both images (same method as the plan); recall = share of the original's line cells with a copy line
+// within tol cells, precision = share of the copy's line cells with an original line within tol.
+function scoreMaps(D,T,W,H){
+  let n=0, sum=0, dark=0, light=0;
+  for(let j=0;j<W*H;j++){ if(T[j]<0.04&&D[j]<0.04) continue; const d=D[j]-T[j]; n++; sum+=Math.abs(d); if(d>0) dark+=d; else light-=d; }
+  const tol=Math.max(1.5,0.008*Math.min(W,H));
+  const a=lineSkeleton(T,W,H).sk, b=lineSkeleton(D,W,H).sk;
+  const notA=new Uint8Array(W*H), notB=new Uint8Array(W*H); for(let j=0;j<W*H;j++){ notA[j]=a[j]?0:1; notB[j]=b[j]?0:1; }
+  const dA=edt(notA,W,H), dB=edt(notB,W,H);                     // distance to the nearest line cell of each image
+  let na=0, ha=0, nb=0, hb=0;
+  for(let j=0;j<W*H;j++){ if(a[j]){ na++; if(dB[j]<=tol) ha++; } if(b[j]){ nb++; if(dA[j]<=tol) hb++; } }
+  return { toneError: n?sum/n:0, tooDark: n?dark/n:0, tooLight: n?light/n:0, inkedCells:n,
+    lineRecall: na?ha/na:null, linePrecision: nb?hb/nb:null, originalLineCells:na, copyLineCells:nb, tolerance:tol }; }
+function score(){ return scoreMaps(simDensity(sim),T,W,H); }
+const pct=v=>v==null?'n/a':`${Math.round(v*100)}%`;
 function updateStatus(){ statusEl.textContent=progress.text; meter.style.width=`${progress.frac*100}%`; }
 function finish(ok){
   running=false; job=null; if(sim) simShow(sim);
-  if (ok){ const s=similarity(); statusEl.textContent=`Finished: ${plan.washStrokes.length} broad strokes (${plan.washStrokes.filter(w=>w.dry).length} dry), ${plan.washes.length} pours and ${plan.strokes.length} lines. By the pixel-by-pixel measure the copy is ${(Math.max(0,s)*100).toFixed(0)}% of the way to the original, which rewards matching broad tone and under-rewards fine lines.`; meter.style.width='100%'; }
+  if (ok){ const s=score(); lastScore=s; statusEl.textContent=`Finished: ${plan.washStrokes.length} broad strokes (${plan.washStrokes.filter(w=>w.dry).length} dry), ${plan.washes.length} pours and ${plan.strokes.length} lines. Tone is off by ${pct(s.toneError)} on average where there is ink (${pct(s.tooDark)} too dark, ${pct(s.tooLight)} too light). Lines: ${pct(s.lineRecall)} of the original's lines are found in the copy, and ${pct(s.linePrecision)} of the copy's lines are in the original.`; meter.style.width='100%'; }
   else statusEl.textContent='Stopped.';
   setBusy(false); btn.run.textContent='Copy again'; }
 function* fullJob(){
@@ -684,7 +704,7 @@ window.__mc={ get plan(){return plan;}, get size(){return [W,H];}, get running()
   pump(ms){ const t0=performance.now(); while(job&&performance.now()-t0<ms){ const r=job.gen.next(); updateStatus(); if(r.done){ const ok=r.value!==false&&running; const d=job; job=null; d.onDone(ok); } } if(sim) simShow(sim); return !!job; },
   test(w,h,pl){ if(sim){ freeSim(sim); } W=w; H=h; T=new Float32Array(w*h); plan=pl; cv.width=w*2; cv.height=h*2; sim=makeSim(w,h,7); const R=brushR(w,h);
     pl.washStrokes=pl.washStrokes||[]; for(const x of pl.washes){ x.ink=x.ink||0.8; } running=true; job={gen:execute(sim,pl,7),onDone:()=>{running=false;}}; },
-  get T(){ return Array.from(T); }, density(){ return sim?Array.from(simDensity(sim)):null; }, exportJson(){ return exportData(); } };
+  get T(){ return Array.from(T); }, density(){ return sim?Array.from(simDensity(sim)):null; }, score(){ return sim?score():null; }, get lastScore(){ return lastScore; }, scoreMaps(D,T,w,h){ return scoreMaps(Float32Array.from(D),Float32Array.from(T),w,h); }, exportJson(){ return exportData(); } };
 })();
 </script>
 </body>

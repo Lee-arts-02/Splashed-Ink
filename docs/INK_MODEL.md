@@ -52,6 +52,38 @@ Machine Copy paints with the same step function. The recipes below are what make
   along the direction of travel (each streak lane gets a random amount of ink), and a fibre-dependent threshold so the paper's high
   fibres take ink and the rest do not. This is what leaves white gaps.
 
+## The live brush (Splashed Ink)
+
+The *Brush* tool paints with the same line recipe, driven by how the hand moves rather than by a measured width.
+
+* **Speed.** Speed is smoothed over a few ticks and measured in sheet widths per second, so it means the same on any screen.
+  Slow (about 0.2 sheet widths per second or less) gives the widest stroke, 6% of the short side; fast (about 2.5 or more) gives the thinnest, 1% of it.
+  The start of a stroke is narrower for a moment, like a brush touching down.
+* **Wet and dry.** Dryness rises with speed and with how little ink is left in the pot. A dry stroke has a flat-bodied footprint,
+  lets the paper's high fibres take the ink and leaves white gaps, and carries faint bristle streaks once it is wide enough.
+* **Water and ink per stamp.** Stamps are placed along the path at a spacing set by the brush radius (at most 5 per simulation step).
+  Ink per stamp is proportional to the spacing, so ink per length stays right at any speed. Water per stamp is fixed, so a fast
+  (widely spaced) stroke is drier than a slow one. Very slow strokes are capped at the wetness of a 0.5-cell spacing.
+* **Pressure.** Only a pen reports it. It scales the width between 0.4x and 1.6x; a finger reports a constant 0.5, which changes nothing.
+* **Ink.** The brush spends 40% of a full pot per sheet-width drawn, and the pot refills about 6 times faster while the brush is lifted
+  than it does after pouring. Pouring still spends ink with time. Scarce ink doubles the spending.
+
+The constants were chosen by eye. The recipe's width and density were checked against synthetic lines of known width in Machine Copy;
+the mapping from human speed to width and dryness was tuned by drawing test strokes, not fitted to real brush data.
+
+## How a copy is scored (Machine Copy)
+
+Both measures compare the finished simulation's tone map with the target, at the analysis resolution.
+
+* **Tone error**: mean absolute tone difference over cells where either image has tone above 0.04. Reported with its two halves,
+  too dark and too light, which add up to it. 0 means identical.
+* **Line recall and precision**: both images go through the same line extraction the plan uses (grey opening, residue above 0.12,
+  small specks dropped, Zhang–Suen thinning). Recall is the share of the original's centreline cells that have a copy centreline cell
+  within `max(1.5, 0.008 × short side)` cells; precision is the reverse. Either is `n/a` when that image has no lines.
+
+Recall says whether the lines survived; precision says whether the copy invented lines (for example, edges of washes read as lines).
+In the browser console, `__mc.score()` recomputes both and `__mc.lastScore` holds the last finished run's numbers.
+
 ## What it does not do
 
 * **No momentum.** Water spreads and runs downhill; it is never *thrown*. A fast stroke does not push ink ahead of the brush.
