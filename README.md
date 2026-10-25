@@ -146,7 +146,7 @@ run `python tests/run_checks.py --splashed` and `--machine-copy` separately if y
 
 * Pull the ink simulation into one small shared library; the two apps currently carry slightly different copies of the step function.
 * Add momentum to the simulation so ink can be thrown and rush ahead of a stroke. Splashed Ink would gain the most.
-* More paintings in the library. The first one (`data/lobes-v1.json`, [list](data/lobes-v1-sources.md)) has 39 works, all from the Cleveland Museum of Art; The Met's API returned nothing to GitHub's servers. Some works in it are fine-line rather than splashed (Shen Zhou's Tiger Hill album, Liang Kai's Sericulture); a curated list would sharpen what the Reader learns.
+* More paintings in the library. The shipped one (`data/lobes-v1.json`) is built from 27 works chosen for broad ink answered by lines ([the list and why each was chosen](data/curated.json), [what was read](data/lobes-v1-sources.md)): Muqi, Liang Kai, Bada Shanren, Shitao, the Yangzhou painters, and the Japanese haboku (splashed-ink) painters who took the manner from them. All are CC0 at the Cleveland Museum of Art; The Met's API returned nothing to GitHub's servers. Edit `data/curated.json` and the *Build lobe library* workflow rebuilds it.
 * Lines in the library come out of Machine Copy in fragments (its centre lines break at junctions). Joining them would let the Reader borrow whole gestures. After that, a sequence model conditioned on the lobe instead of nearest neighbours.
 * Comparison partners: a mirror that repeats the person's own habits.
 * A Chinese-language interface.
