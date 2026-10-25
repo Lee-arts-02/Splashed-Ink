@@ -822,7 +822,7 @@ function borrowOutlines(pick,W,H,rd,ink){
       let len=0; for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
       const inner=ln.reduce((a,p)=>a+Math.abs(p[1]),0)/ln.length<0.7; return {pts,len,inner}; })
       .filter(l=>l.len>=2&&l.pts.every(p=>p[0]>-2&&p[1]>-2&&p[0]<W+2&&p[1]<H+2)).sort((a,b)=>b.len-a.len);
-    const take=lines.slice(0,8).filter((_,i)=>i<2||rd()<0.6).slice(0,5);
+    const take=lines.filter(l=>l.len>=0.18*L.fr.Lh).slice(0,6);                     // the painter's arrangement, whole: no random picking among the lines
     const wetFirst=L.wet>0.25&&rd()<0.7, order=wetFirst?[...take.filter(l=>l.inner),null,...take.filter(l=>!l.inner)]:take;
     for(const l of order){
       if(l===null){ if(g.length&&g[g.length-1].type!=='wait') g.push({type:'wait',seconds:r3(1.4+rd()*1.6)}); continue; }
