@@ -60,6 +60,7 @@ summary{cursor:pointer;color:var(--ink)}
     <select id="detail" aria-label="Detail level"><option value="180">Fast</option><option value="240" selected>Standard</option><option value="320">Fine</option></select>
     <button id="run" class="primary" disabled>Start copying</button>
     <button id="stop" disabled>Stop</button>
+    <button id="refine" disabled>Refine tone</button>
     <button id="replay" disabled>Replay</button>
     <button id="export" disabled>Export</button>
   </div>
@@ -444,7 +445,7 @@ function buildPlan(T,W,H,Tf,FW,FH){
     ws.streak=streakOf(ws.pts);
     const dryF=smooth(0.10,0.30,ws.streak);
     ws.dry=!(ws.rparent>=1.4*R && tone>=0.45 && dryF<0.5);
-    ws.pts.forEach((q,i)=>{ const u=n>1?i/(n-1):0; q[4]=ws.dry?Math.min(0.85,0.3+0.5*u*u):0.12+0.5*u*u*u; }); }
+    ws.pts.forEach((q,i)=>{ const u=n>1?i/(n-1):0; q[4]=ws.dry?Math.min(0.85,0.08+0.42*dryF+0.35*u*u):0.12+0.5*u*u*u; }); }   // how broken a dry stroke runs follows how streaky the original is there
   const cand=[]; for(let j=0;j<W*H;j++) if(rm[j]&&!cov[j]&&dtW[j]>=rhoMin) cand.push(j);
   cand.sort((a,b)=>dtW[b]-dtW[a]);
   const washes=[];
@@ -563,7 +564,9 @@ function washParams(rho,R,table){
 
 // ---------------- execution ----------------
 const progress={text:'',frac:0};
-let jitter=rng(1), running=false;
+let jitter=rng(1), running=false, gain=null;
+// Tone correction learned from earlier attempts: multiplies the ink laid at each cell. 1 everywhere until Refine tone runs.
+const gainAt=(s,x,y)=>{ if(!gain||gain.length!==s.w*s.h) return 1; const X=Math.min(s.w-1,Math.max(0,Math.floor(x))), Y=Math.min(s.h-1,Math.max(0,Math.floor(y))); return gain[Y*s.w+X]; };
 const WASH_PAUSE=20, SETTLE_A=900, SETTLE_B=540, STROKE_PAUSE=25;
 function stepsEstimate(pl){ let n=0;
   for(const ws of (pl.washStrokes||[])){ let L=0; for(let i=1;i<ws.pts.length;i++) L+=Math.hypot(ws.pts[i][0]-ws.pts[i-1][0],ws.pts[i][1]-ws.pts[i-1][1]); n+=Math.max(2,Math.ceil(L/(ws.dry?DS:WV)))+(FLOW>0?FLOW_STEPS:0)+(ws.dry?8:0); }
@@ -578,8 +581,8 @@ function* execute(s,pl,seed){
     const q=WS[wi].pts; progress.text=`Painting broad strokes: ${wi+1} of ${WS.length}`;
     for(let i=0;i<q.length-1;i++){ const a=q[i], b=q[i+1], L=Math.hypot(b[0]-a[0],b[1]-a[1]), m=Math.max(1,Math.ceil(L/WV));
       const dir=[(b[0]-a[0])/(L||1),-(b[1]-a[1])/(L||1)];
-      for(let t=0;t<m;t++){ const u=t/m, sz=a[5]+(b[5]-a[5])*u, ink=a[6]+(b[6]-a[6])*u, dry=a[4]+(b[4]-a[4])*u;
-        simStep(s,[a[0]+(b[0]-a[0])*u,s.h-(a[1]+(b[1]-a[1])*u),POUR*Math.min(sz*sz,2.5)*WATER,ink],R*sz,dry,dir,[STREAK,Math.max(1.5,0.22*R*sz),wi*7.31]);
+      for(let t=0;t<m;t++){ const u=t/m, sz=a[5]+(b[5]-a[5])*u, dry=a[4]+(b[4]-a[4])*u, X=a[0]+(b[0]-a[0])*u, Y=a[1]+(b[1]-a[1])*u, ink=(a[6]+(b[6]-a[6])*u)*gainAt(s,X,Y);
+        simStep(s,[X,s.h-Y,POUR*Math.min(sz*sz,2.5)*WATER,ink],R*sz,dry,dir,[STREAK,Math.max(1.5,0.22*R*sz),wi*7.31]);
         if(pace()){ yield; if(!running) return; simBegin(s); } } }
     if(FLOW>0){ const f=q[0], e=q[q.length-1], dx=e[0]-f[0], dy=e[1]-f[1], mm=Math.hypot(dx,dy)||1;
       s.gx=dx/mm*FLOW; s.gy=-dy/mm*FLOW;                                      // optional: tilt the paper along the stroke
@@ -588,9 +591,9 @@ function* execute(s,pl,seed){
   for(let wi=0;wi<pl.washes.length;wi++){
     const w=pl.washes[wi]; const n=Math.max(1,Math.round(w.seconds*SPS)), amt=POUR*Math.min(w.size*w.size,2.5), rad=R*w.size, rJ=3*w.size*Math.min(s.w,s.h)/240;
     progress.text=`Painting washes: ${wi+1} of ${pl.washes.length}`;
-    const wdx=w.dx||0, wdy=w.dy||0, wdir=[wdx,-wdy], wl=Math.hypot(wdx,wdy)||1;
+    const wdx=w.dx||0, wdy=w.dy||0, wInk=w.ink*gainAt(s,w.x,w.y), wdir=[wdx,-wdy], wl=Math.hypot(wdx,wdy)||1;
     for(let k=0;k<n;k++){ const u=n>1?2*k/(n-1)-1:0, x=w.x+wdx*u+(jitter()+jitter()+jitter()-1.5)*rJ, y=w.y+wdy*u+(jitter()+jitter()+jitter()-1.5)*rJ;
-      simStep(s,[x,s.h-y,amt,w.ink],rad,0,[wdir[0]/wl,wdir[1]/wl],[0,1,0]); if(pace()){ yield; if(!running) return; simBegin(s); } }
+      simStep(s,[x,s.h-y,amt,wInk],rad,0,[wdir[0]/wl,wdir[1]/wl],[0,1,0]); if(pace()){ yield; if(!running) return; simBegin(s); } }
     for(let k=0;k<WASH_PAUSE;k++){ simStep(s,null); if(pace()){ yield; if(!running) return; simBegin(s); } } }
   progress.text='Letting the washes settle';
   for(let k=0;k<SETTLE_A;k++){ simStep(s,null); if(pace()){ yield; if(!running) return; simBegin(s); } }
@@ -599,13 +602,13 @@ function* execute(s,pl,seed){
     for(let i=0;i<q.length-1;i++){ const a=q[i], b=q[i+1], L=Math.hypot(b[0]-a[0],b[1]-a[1]), m=Math.max(1,Math.ceil(L/DS));
       const dir=[(b[0]-a[0])/(L||1),-(b[1]-a[1])/(L||1)];
       for(let t=0;t<m;t++){ const u=t/m, rho=a[2]+(b[2]-a[2])*u, tone=a[3]+(b[3]-a[3])*u, dv=a[4]+(b[4]-a[4])*u;
-        const rad=Math.max(1.5,rho*DRY_R), D=Dn(tone)/Math.sqrt(Math.max(1,a[7]||1)), C=D*DS/(DRY_K*rad*DRY_W)/(1-0.5*dv)*KDD;
-        simStep(s,[a[0]+(b[0]-a[0])*u,s.h-(a[1]+(b[1]-a[1])*u),DRY_W,C],rad,dv,dir,[DRY_STREAK,Math.max(1.2,0.12*rad),di*7.31+3,1]);
+        const rad=Math.max(1.5,rho*DRY_R), D=Dn(tone)/Math.sqrt(Math.max(1,a[7]||1)), X=a[0]+(b[0]-a[0])*u, Y=a[1]+(b[1]-a[1])*u, C=D*DS/(DRY_K*rad*DRY_W)/(1-0.5*dv)*KDD*gainAt(s,X,Y);
+        simStep(s,[X,s.h-Y,DRY_W,C],rad,dv,dir,[DRY_STREAK,Math.max(1.2,0.12*rad),di*7.31+3,1]);
         if(pace()){ yield; if(!running) return; simBegin(s); } } }
     for(let k=0;k<8;k++){ simStep(s,null); if(pace()){ yield; if(!running) return; simBegin(s); } } }
   for(let si=0;si<pl.strokes.length;si++){
     const pts=pl.strokes[si].pts; progress.text=`Drawing strokes: ${si+1} of ${pl.strokes.length}`;
-    const stamp=(x,y,wd,D,dry,dir)=>{ const rad=Math.max(0.9,0.5*wd*KR), a=Math.min(0.03,Math.max(0.0022,0.0012*rad*rad)), C=D*DS/(0.64*rad*a)*KD*(1.05+2.2/Math.pow(Math.max(wd,1),1.4)); simStep(s,[x,s.h-y,a,C],rad,dry,dir,wd>=3&&dir?[0.5,Math.max(1.2,0.3*rad),si*5.1]:null); return pace(); };
+    const stamp=(x,y,wd,D,dry,dir)=>{ D*=gainAt(s,x,y); const rad=Math.max(0.9,0.5*wd*KR), a=Math.min(0.03,Math.max(0.0022,0.0012*rad*rad)), C=D*DS/(0.64*rad*a)*KD*(1.05+2.2/Math.pow(Math.max(wd,1),1.4)); simStep(s,[x,s.h-y,a,C],rad,dry,dir,wd>=3&&dir?[0.5,Math.max(1.2,0.3*rad),si*5.1]:null); return pace(); };
     if(pts.length===1){ const p=pts[0]; for(let k=0;k<8;k++){ if(stamp(p[0],p[1],p[2],p[3]*1.2,0)){ yield; if(!running) return; simBegin(s); } } }
     else for(let q=0;q<pts.length-1;q++){ const a=pts[q], b=pts[q+1]; const L=Math.hypot(b[0]-a[0],b[1]-a[1]), m=Math.max(1,Math.ceil(L/DS));
       const ldir=[(b[0]-a[0])/(L||1),-(b[1]-a[1])/(L||1)];
@@ -616,9 +619,9 @@ function* execute(s,pl,seed){
 }
 
 // ---------------- driver ----------------
-const btn={run:$('run'),stop:$('stop'),replay:$('replay'),export:$('export'),detail:$('detail')};
-let job=null, lastShown=0, result='', lastScore=null;
-function setBusy(b){ btn.run.disabled=b||!T; btn.stop.disabled=!b; btn.replay.disabled=b||!sim||!plan; btn.export.disabled=b||!plan; btn.detail.disabled=b; }
+const btn={run:$('run'),stop:$('stop'),replay:$('replay'),export:$('export'),detail:$('detail'),refine:$('refine')};
+let job=null, lastShown=0, result='', lastScore=null, prevScore=null, refinePass=0, lastAdded=0;
+function setBusy(b){ btn.run.disabled=b||!T; btn.stop.disabled=!b; btn.replay.disabled=b||!sim||!plan; btn.export.disabled=b||!plan; btn.detail.disabled=b; btn.refine.disabled=b||!sim||!plan||!lastScore; }
 // Two separate measures, because one pixel score rewards broad tone and hides lost lines.
 // tone: mean |copy - original| over cells where either has ink (0 = identical), plus how much of it is too dark vs too light.
 // lines: centrelines of both images (same method as the plan); recall = share of the original's line cells with a copy line
@@ -636,16 +639,44 @@ function scoreMaps(D,T,W,H){
     lineRecall: na?ha/na:null, linePrecision: nb?hb/nb:null, originalLineCells:na, copyLineCells:nb, tolerance:tol }; }
 function score(){ return scoreMaps(simDensity(sim),T,W,H); }
 const pct=v=>v==null?'n/a':`${Math.round(v*100)}%`;
+// Analysis by synthesis: compare the copy with the original cell by cell, in ink density (log tone), and fold the ratio into the gain map.
+// The ratio is smoothed over about half a brush width so one pass corrects whole areas, not single specks.
+function updateGain(){
+  const D=simDensity(sim), n=W*H, lr=new Float32Array(n), wt=new Float32Array(n);
+  for(let j=0;j<n;j++){ if(T[j]<0.04&&D[j]<0.04) continue; lr[j]=Math.log((Dn(T[j])+0.04)/(Dn(D[j])+0.04)); wt[j]=1; }
+  const rad=Math.max(2,Math.round(0.5*brushR(W,H)));
+  const box=(a)=>{ const t=new Float32Array(n), o=new Float32Array(n);
+    for(let y=0;y<H;y++){ let acc=0; for(let x=-rad;x<W+rad;x++){ if(x+rad<W) acc+=a[y*W+Math.min(W-1,x+rad)]*(x+rad<W?1:0); if(x-rad-1>=0) acc-=a[y*W+x-rad-1]; if(x>=0&&x<W) t[y*W+x]=acc; } }
+    for(let x=0;x<W;x++){ let acc=0; for(let y=-rad;y<H+rad;y++){ if(y+rad<H) acc+=t[(y+rad)*W+x]; if(y-rad-1>=0) acc-=t[(y-rad-1)*W+x]; if(y>=0&&y<H) o[y*W+x]=acc; } }
+    return o; };
+  const num=box(lr), den=box(wt);
+  if(!gain||gain.length!==n) gain=new Float32Array(n).fill(1);
+  for(let j=0;j<n;j++){ if(den[j]<1) continue; const r=Math.exp(0.85*num[j]/den[j]); gain[j]=Math.max(0.15,Math.min(5,gain[j]*Math.max(0.4,Math.min(2.5,r)))); }
+  // Where the original has ink and no element of the plan reached, more ink cannot help: add pours there instead.
+  const miss=new Float32Array(n), cnt=box(Float32Array.from(D,(_,j)=>1));
+  { const dm=new Float32Array(n); for(let j=0;j<n;j++) dm[j]=Math.max(0,Dn(T[j])-Dn(D[j]));
+    const bm=box(dm); for(let j=0;j<n;j++) miss[j]=bm[j]/Math.max(1,cnt[j]); }
+  const mk=new Uint8Array(n); for(let j=0;j<n;j++) mk[j]=(miss[j]>0.18&&D[j]<0.5*T[j])?1:0;
+  dropSmall(mk,W,H,12);
+  const dt=edt(mk,W,H), rmin=Math.max(2,0.25*brushR(W,H)), cov=new Uint8Array(n), cand=[];
+  for(let j=0;j<n;j++) if(mk[j]&&dt[j]>=rmin) cand.push(j);
+  cand.sort((a,b)=>dt[b]-dt[a]); let added=0;
+  for(const j of cand){ if(cov[j]) continue; const rho=dt[j], cx=j%W, cy=(j/W)|0, rr=Math.ceil(rho); let sm=0,c=0;
+    for(let y=Math.max(0,cy-rr);y<=Math.min(H-1,cy+rr);y++) for(let x=Math.max(0,cx-rr);x<=Math.min(W-1,cx+rr);x++) if(Math.hypot(x-cx,y-cy)<=0.8*rho){ cov[y*W+x]=1; sm+=miss[y*W+x]; c++; }
+    plan.washes.push({x:cx+0.5,y:cy+0.5,rho,tone:1-Math.exp(-1.05*(c?sm/c:0.2)),dx:0,dy:0,fill:refinePass+1});
+    if(++added>=60) break; }
+  return added;
+}
 function updateStatus(){ statusEl.textContent=progress.text; meter.style.width=`${progress.frac*100}%`; }
 function finish(ok){
   running=false; job=null; if(sim) simShow(sim);
-  if (ok){ const s=score(); lastScore=s; statusEl.textContent=`Finished: ${plan.washStrokes.length} broad strokes (${plan.washStrokes.filter(w=>w.dry).length} dry), ${plan.washes.length} pours and ${plan.strokes.length} lines. Tone is off by ${pct(s.toneError)} on average where there is ink (${pct(s.tooDark)} too dark, ${pct(s.tooLight)} too light). Lines: ${pct(s.lineRecall)} of the original's lines are found in the copy, and ${pct(s.linePrecision)} of the copy's lines are in the original.`; meter.style.width='100%'; }
+  if (ok){ const s=score(); lastScore=s; statusEl.textContent=`Finished: ${plan.washStrokes.length} broad strokes (${plan.washStrokes.filter(w=>w.dry).length} dry), ${plan.washes.length} pours and ${plan.strokes.length} lines. Tone is off by ${pct(s.toneError)} on average where there is ink (${pct(s.tooDark)} too dark, ${pct(s.tooLight)} too light). Lines: ${pct(s.lineRecall)} of the original's lines are found in the copy, and ${pct(s.linePrecision)} of the copy's lines are in the original.`+(prevScore?` Refine pass ${refinePass}: tone error was ${pct(prevScore.toneError)} before this pass, and ${lastAdded} pours were added where no ink had reached. Each further pass usually helps less.`:' Press Refine tone to repaint with the ink adjusted where the copy came out too dark or too light.'); meter.style.width='100%'; }
   else statusEl.textContent='Stopped.';
   setBusy(false); btn.run.textContent='Copy again'; }
-function* fullJob(){
+function* fullJob(keepPaper){
   const R=brushR(W,H), key=`${W}x${H}`;
   if(sim){ freeSim(sim); sim=null; }
-  paperSeed=(Math.random()*1e9)|0; sim=makeSim(W,H,paperSeed);
+  if(!keepPaper) paperSeed=(Math.random()*1e9)|0; sim=makeSim(W,H,paperSeed);
   if(calKey!==key||!calTable){ calTable=yield* calibrate(R); calKey=key; if(!running) return false; }
   for(const w of plan.washes){ const p=washParams(w.rho,R,calTable.discs); w.size=p.size; w.seconds=p.seconds; w.ink=Math.max(0.15,Math.min(20,CAL_C*0.8*Dn(w.tone)/Math.max(0.02,p.dm))); }
   for(const ws of plan.washStrokes) for(const q of ws.pts){ const p=strokeParams(0.85*q[2],calTable.lines); q[5]=p.size; q[6]=Math.max(0.05,Math.min(20,(CAL_C/WATER)*0.8*Dn(q[3])/Math.sqrt(Math.max(1,q[7]||1))/Math.max(0.02,p.dm))); }
@@ -664,7 +695,7 @@ function analyseNow(){
   statusEl.textContent=`Found ${nd} dry-brush strokes, ${plan.washStrokes.length-nd} wet strokes, ${plan.washes.length} round pours and ${plan.strokes.length} lines (analysis took ${plan.ms} ms). Press Start copying.`;
   btn.run.disabled=false; btn.export.disabled=false; btn.replay.disabled=true; meter.style.width='0'; btn.run.textContent='Start copying'; }
 function loadImage(img){
-  loadedImg=img; if(sim){ freeSim(sim); sim=null; } calTable=null; prepareTarget(img); analyseNow(); }
+  loadedImg=img; if(sim){ freeSim(sim); sim=null; } calTable=null; gain=null; lastScore=null; prevScore=null; refinePass=0; prepareTarget(img); analyseNow(); }
 $('file').addEventListener('change',e=>{
   const f=e.target.files&&e.target.files[0]; if(!f) return; srcName=f.name.replace(/\.[^.]+$/,'');
   const url=URL.createObjectURL(f), img=new Image();
@@ -672,8 +703,9 @@ $('file').addEventListener('change',e=>{
   img.onerror=()=>{ statusEl.textContent='That file could not be read as an image. Try a JPEG or PNG.'; };
   img.src=url; });
 btn.detail.addEventListener('change',()=>{ SHORT=+btn.detail.value; if(loadedImg) loadImage(loadedImg); });
-btn.run.addEventListener('click',()=>{ if(!plan) return; running=true; setBusy(true); drive(fullJob(),finish); });
+btn.run.addEventListener('click',()=>{ if(!plan) return; gain=null; prevScore=null; refinePass=0; running=true; setBusy(true); drive(fullJob(),finish); });
 btn.stop.addEventListener('click',()=>{ running=false; });
+btn.refine.addEventListener('click',()=>{ if(!sim||!plan) return; prevScore=lastScore; lastAdded=updateGain(); refinePass++; drawAnalysis(); running=true; setBusy(true); drive(fullJob(true),finish); });
 btn.replay.addEventListener('click',()=>{ if(!sim||!plan) return; running=true; setBusy(true); drive(execute(sim,plan,paperSeed),finish); });
 let downloads=null;
 (async()=>{ try{ if(window.claude&&window.claude.use) downloads=await window.claude.use('downloads'); }catch(e){ downloads=null; } })();
@@ -701,7 +733,7 @@ btn.export.addEventListener('click',async()=>{
   catch(e){ statusEl.textContent='Export is not available in this view.'; } });
 
 window.__mc={ get plan(){return plan;}, get size(){return [W,H];}, get running(){return !!job;},
-  pump(ms){ const t0=performance.now(); while(job&&performance.now()-t0<ms){ const r=job.gen.next(); updateStatus(); if(r.done){ const ok=r.value!==false&&running; const d=job; job=null; d.onDone(ok); } } if(sim) simShow(sim); return !!job; },
+  refine(){ prevScore=lastScore; lastAdded=updateGain(); refinePass++; running=true; job={gen:fullJob(true),onDone:finish}; }, pump(ms){ const t0=performance.now(); while(job&&performance.now()-t0<ms){ const r=job.gen.next(); updateStatus(); if(r.done){ const ok=r.value!==false&&running; const d=job; job=null; d.onDone(ok); } } if(sim) simShow(sim); return !!job; },
   test(w,h,pl){ if(sim){ freeSim(sim); } W=w; H=h; T=new Float32Array(w*h); plan=pl; cv.width=w*2; cv.height=h*2; sim=makeSim(w,h,7); const R=brushR(w,h);
     pl.washStrokes=pl.washStrokes||[]; for(const x of pl.washes){ x.ink=x.ink||0.8; } running=true; job={gen:execute(sim,pl,7),onDone:()=>{running=false;}}; },
   get T(){ return Array.from(T); }, density(){ return sim?Array.from(simDensity(sim)):null; }, score(){ return sim?score():null; }, get lastScore(){ return lastScore; }, scoreMaps(D,T,w,h){ return scoreMaps(Float32Array.from(D),Float32Array.from(T),w,h); }, exportJson(){ return exportData(); } };

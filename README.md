@@ -113,7 +113,8 @@ run `python tests/run_checks.py --splashed` and `--machine-copy` separately if y
 * **Machine Copy infers; it does not recover.** Stroke order and direction are heuristics, not the painter's real order. Positions, widths and tones
   are measured at the analysis resolution, not the image's own. When a copy finishes it reports two numbers instead of one: tone error (mean difference where
   either image has ink, split into too dark and too light) and line recall/precision (centrelines of the copy matched against the original's within
-  about 1.5 cells). A single pixel score favoured broad tone and hid lost lines. The data file says which fields are measured and which are assumed.
+  about 1.5 cells). A single pixel score favoured broad tone and hid lost lines.
+  **Refine tone** repaints with the ink corrected from the last attempt; it fixes overall too-dark and too-light areas, not edges. The data file says which fields are measured and which are assumed.
 * **Verification status.** The checks above cover determinism, the friction settings, the data formats and an end-to-end Machine Copy run on a synthetic image.
   Machine Copy's Standard and Fine detail levels on real paintings were checked on cropped regions and at low resolution, not end to end at full size,
   and the wet/dry classification and dry-brush look have not been tested across many paintings. Please report what you see.

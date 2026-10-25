@@ -228,6 +228,13 @@ with sync_playwright() as pw:
               cmp["same"]["toneError"] < 1e-6 and cmp["same"]["lineRecall"] == 1, json.dumps(cmp["same"])[:120])
         check("a missing line drops line recall while tone error stays small",
               cmp["lost"]["lineRecall"] < 0.2 and cmp["lost"]["toneError"] < 0.35, json.dumps(cmp["lost"])[:160])
+        before = sc["toneError"]
+        mc.evaluate("window.__mc.refine()")
+        t0 = time.time()
+        while time.time() - t0 < 240 and mc.evaluate("window.__mc.pump(15000)"):
+            pass
+        after = mc.evaluate("window.__mc.lastScore")["toneError"]
+        check("Refine tone does not make the tone worse", after <= before + 0.01, f"{before:.3f} -> {after:.3f}")
         data = mc.evaluate("window.__mc.exportJson()")
         tmp2 = Path(tempfile.mkdtemp()) / "plan.json"; tmp2.write_text(data)
         issues = validate.check(tmp2)

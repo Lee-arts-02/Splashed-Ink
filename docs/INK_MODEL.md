@@ -82,6 +82,14 @@ Both measures compare the finished simulation's tone map with the target, at the
   within `max(1.5, 0.008 × short side)` cells; precision is the reverse. Either is `n/a` when that image has no lines.
 
 Recall says whether the lines survived; precision says whether the copy invented lines (for example, edges of washes read as lines).
+**Refine tone** (analysis by synthesis): after a copy, the program compares it with the original in ink density
+(`ln((density_original + 0.04) / (density_copy + 0.04))`), averages that over about half a brush width, and multiplies a per-cell
+gain map by it (damped by 0.85, clamped per pass to 0.4–2.5 and overall to 0.15–5). The next attempt repaints the same plan on the
+same paper with every stamp's ink scaled by the gain where it lands. Where the original has ink that no element reached
+(missing density above 0.18 and the copy under half the original's tone), round pours are added. On the two test paintings at
+low resolution, two passes brought tone error from about 18–19% to about 14%, with line recall unchanged. Most of what remains
+is at edges, where ink bleeds past or falls short of the original's boundary, and that is a placement problem, not a tone problem.
+
 In the browser console, `__mc.score()` recomputes both and `__mc.lastScore` holds the last finished run's numbers.
 
 ## What it does not do
