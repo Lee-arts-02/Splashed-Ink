@@ -33,8 +33,21 @@ def get(svc, width):
     r = requests.get(f"{svc}/full/{width},/0/default.jpg", headers=UA, timeout=90)
     return Image.open(io.BytesIO(r.content)).convert("RGB")
 
-ap = argparse.ArgumentParser(); ap.add_argument("--survey", action="store_true"); ap.add_argument("--pids", default="1125010-1125030"); ap.add_argument("--pages", default="")
+ap = argparse.ArgumentParser(); ap.add_argument("--survey", action="store_true"); ap.add_argument("--pids", default="1125010-1125030"); ap.add_argument("--pages", default=""); ap.add_argument("--find", default="")
 a = ap.parse_args()
+if a.find:                                                     # list the volumes the NDL catalogue has under a title, with their digital ids
+    import re, xml.etree.ElementTree as ET
+    r = requests.get("https://ndlsearch.ndl.go.jp/api/opensearch", params={"title": a.find, "cnt": 200}, headers=UA, timeout=60)
+    found = []
+    for it in ET.fromstring(r.content).iter("item"):
+        t = " ".join((x.text or "") for x in it if x.tag in ("title", "{http://purl.org/dc/elements/1.1/}title", "{http://ndl.go.jp/dcndl/terms/}volume"))
+        for x in it:
+            m = re.search(r"dl\.ndl\.go\.jp/(?:info:ndljp/)?pid/(\d+)", (x.text or "") + " " + " ".join(x.attrib.values()))
+            if m: found.append({"pid": int(m.group(1)), "title": t.strip()}); break
+    seen = {}; [seen.setdefault(f["pid"], f) for f in found]
+    for f in seen.values():
+        m = manifest(f["pid"]); f["pages"] = len(canvases(m)) if m else 0; f["label"] = label(m) if m else ""; print(f, flush=True)
+    (OUT / "found.json").write_text(json.dumps(list(seen.values()), ensure_ascii=False, indent=1))
 if a.survey:
     lo, hi = map(int, a.pids.split("-")); vols = []
     for pid in range(lo, hi + 1):
