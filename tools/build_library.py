@@ -4,8 +4,9 @@
     pip install playwright requests && python -m playwright install chromium
     python tools/build_library.py --out data/lobes-v1.json
 
-It looks up xieyi painters in two CC0 open-access collections (the Cleveland Museum of Art and The Met), keeps ink
-paintings marked public domain, downloads their web-size images to a temporary folder, and reads each one with
+By default it reads the works chosen in data/curated.json (each with the reason it was chosen) from the Cleveland Museum
+of Art's CC0 Open Access collection. With --curated '' it instead looks up xieyi painters in the Cleveland and Met collections and keeps ink
+paintings marked public domain. Either way it downloads their web-size images to a temporary folder, and reads each one with
 Machine Copy itself (apps/machine-copy) in a headless browser, so the library is built exactly as the app builds it.
 Images are not kept; the library holds only lobe shapes, line positions and each painting's title, artist and source.
 
@@ -86,20 +87,39 @@ def met(name, per, log):
     return out
 
 
+def curated(path, log):
+    """The works listed in data/curated.json, fetched by accession number; each must still be CC0 at the museum."""
+    out = []
+    for w in json.loads(Path(path).read_text())["works"]:
+        j = get_json("https://openaccess-api.clevelandart.org/api/artworks/" + w["accession"])
+        o = (j or {}).get("data") or {}
+        u = ((o.get("images") or {}).get("web") or {}).get("url")
+        if o.get("share_license_status") != "CC0" or not u:
+            log.append(f"{w['accession']}: skipped (licence {o.get('share_license_status')!r}, image {'yes' if u else 'no'})")
+            continue
+        who = "; ".join(c.get("description", "") for c in o.get("creators") or []) or (o.get("culture") or [""])[0]
+        out.append((u, {"title": o.get("title"), "artist": who, "date": o.get("creation_date") or "", "source": "Cleveland Museum of Art",
+                        "url": o.get("url") or "", "image": u, "license": "CC0 (CMA Open Access)", "why": w.get("why", "")}))
+        log.append(f"{w['accession']}: {o.get('title')}")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(ROOT / "data/lobes-v1.json"))
     ap.add_argument("--per", type=int, default=10, help="works per painter per museum")
     ap.add_argument("--short", type=int, default=240, help="analysis resolution (short side), as Machine Copy's Detail menu")
     ap.add_argument("--artists", default="|".join(ARTISTS))
+    ap.add_argument("--curated", default=str(ROOT / "data/curated.json"), help="a list of chosen works; '' to search by painter instead")
     a = ap.parse_args()
 
     log, items, seen = [], [], set()
-    for name in a.artists.split("|"):
-        for u, m in cleveland(name, a.per, log) + met(name, a.per, log):
-            if u not in seen:
-                seen.add(u)
-                items.append((u, m))
+    found = curated(a.curated, log) if a.curated and Path(a.curated).exists() else \
+        [x for name in a.artists.split("|") for x in cleveland(name, a.per, log) + met(name, a.per, log)]
+    for u, m in found:
+        if u not in seen:
+            seen.add(u)
+            items.append((u, m))
     print("\n".join(log), flush=True)
     print(f"{len(items)} images to read", flush=True)
 
@@ -135,7 +155,7 @@ def main():
     lines = sum(len(l["lines"]) for l in lib["lobes"])
     print(f"read {ok} images: {len(lib['paintings'])} paintings, {len(lib['lobes'])} lobes, {lines} lines -> {a.out}")
     src = Path(a.out).with_name("lobes-v1-sources.md")
-    rows = ["# Paintings in lobes-v1.json", "", "All public domain (CC0) at their source. The library holds no images.", "",
+    rows = ["# Paintings in lobes-v1.json", "", "All public domain (CC0) at their source. The library holds no images. Why each was chosen: [curated.json](curated.json).", "",
             "| Painting | Artist | Date | Source | Lobes | Lines |", "|---|---|---|---|---|---|"]
     for p in lib["paintings"]:
         rows.append(f"| [{p.get('title','').replace('|','/')}]({p.get('url','')}) | {p.get('artist','').replace('|','/')} | {p.get('date','')} | {p.get('source','')} | {p.get('lobes',0)} | {p.get('lines',0)} |")

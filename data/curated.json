@@ -1,0 +1,126 @@
+{
+ "note": "Works chosen for the lobe library: paintings where broad ink (a splash, a wash, a blot) is answered by lines. Fine-line landscapes, gongbi and narrative paintings are left out. All are CC0 in the Cleveland Museum of Art's Open Access collection; the build checks each one's licence again.",
+ "excluded": {
+  "1955.36": "Bada Shanren, Landscape after Guo Zhongshu: a dry-brush landscape, almost no wash",
+  "1954.126": "Shitao, Spring Mist over Jiangnan: too little wash to read",
+  "1964.371": "Shen Zhou, Twelve Views of Tiger Hill (all leaves): fine-line topographic landscape",
+  "1997.100": "Shen Zhou, Yellow Chrysanthemums and Red Osmanthus: fine, coloured",
+  "1977.5": "Liang Kai, Sericulture: fine-line narrative",
+  "1963.259": "Wu Zhen, Poetic Feeling in a Thatched Pavilion: hemp-fibre landscape",
+  "1997.96": "Xu Ben, Streams and Mountains: fine landscape",
+  "1970.128": "Lan Ying, Zhi and Xu's Pure Conversation: figures in a coloured landscape",
+  "1971.231": "Lan Ying, Clearing Autumn Mists in the Chu Mountains: fine landscape",
+  "1958.427": "Muqi, Dragon; Tiger: the pair as one image, already read as two",
+  "1966.31": "Shitao, Reminiscences of Qinhuai River: the other leaves, mostly line"
+ },
+ "works": [
+  {
+   "accession": "1953.247",
+   "why": "Bada Shanren, Fish and Rocks: wet ink rocks answered by a few lines; the core of the xieyi manner"
+  },
+  {
+   "accession": "1981.34",
+   "why": "Muqi, Swallow and Lotus: splashed lotus leaves, a few strokes for stem and bird"
+  },
+  {
+   "accession": "1958.427.1",
+   "why": "Muqi, Dragon: clouds of wash with the dragon drawn out of them"
+  },
+  {
+   "accession": "1958.427.2",
+   "why": "Muqi, Tiger: a tiger read out of washes of ink"
+  },
+  {
+   "accession": "1982.53",
+   "why": "Muqi, Willow and Magpie: wet ink branches and a bird in a few strokes"
+  },
+  {
+   "accession": "1984.42",
+   "why": "Liang Kai, Waterfowl and Reeds: abbreviated-brush (jianbi) ink"
+  },
+  {
+   "accession": "1964.44",
+   "why": "Bodhidharma Crossing the Yangzi on a Reed: Chan abbreviated-brush figure"
+  },
+  {
+   "accession": "1977.31",
+   "why": "Huang Shen, Eagle on a Tree Trunk: Yangzhou eccentric, splashed trunk and quick lines"
+  },
+  {
+   "accession": "1999.6",
+   "why": "Xugu, Loquats: broad wet leaves with dry lines over them"
+  },
+  {
+   "accession": "1976.112",
+   "why": "Li Shan, Five Pine Trees: Yangzhou eccentric, wet ink and calligraphic line"
+  },
+  {
+   "accession": "1952.589",
+   "why": "Shitao, Rocks, Orchid, and Bamboo: wash rocks answered by orchid and bamboo strokes"
+  },
+  {
+   "accession": "1966.31.8",
+   "why": "Shitao, Reminiscences of Qinhuai River (leaf): wet washes with lines; the most wash-heavy leaf"
+  },
+  {
+   "accession": "1966.31.6",
+   "why": "Shitao, Reminiscences of Qinhuai River (leaf): wet washes with lines"
+  },
+  {
+   "accession": "1980.13",
+   "why": "Gao Fenghan, Plum Blossoms and Peonies: xieyi flowers"
+  },
+  {
+   "accession": "1997.101",
+   "why": "Shen Zhou, Flowering Crab Apple: literati xieyi flower, wash leaves and line"
+  },
+  {
+   "accession": "1979.28",
+   "why": "Chen Chun, Looking for a Monastery in the Misty Mountains: wet Mi-style ink"
+  },
+  {
+   "accession": "1974.26",
+   "why": "Wang Mian, A Prunus in the Moonlight: ink plum, blossoms and branches"
+  },
+  {
+   "accession": "1967.36",
+   "why": "Zhao Zhong, Ink Flowers: ink flowers in wash and line"
+  },
+  {
+   "accession": "1960.40",
+   "why": "Tao Cheng, Chrysanthemums and Cabbage: broad ink leaves, outlined"
+  },
+  {
+   "accession": "1955.37.8",
+   "why": "Zha Shibiao, Landscape after Mi Fei: Mi dots, wet ink"
+  },
+  {
+   "accession": "1955.43",
+   "why": "Sesshu Toyo, Haboku (splashed ink) landscape: the Japanese descendant of Chinese splashed ink"
+  },
+  {
+   "accession": "1976.59",
+   "why": "Shugetsu Tokan, Haboku (flung-ink) landscape"
+  },
+  {
+   "accession": "2015.466",
+   "why": "Keison, Coastal Landscape in the Haboku Style"
+  },
+  {
+   "accession": "1958.289",
+   "why": "Tawaraya Sotatsu, The Bird's Nest Patriarch: tarashikomi, ink pooled wet into wet"
+  },
+  {
+   "accession": "1970.71.1",
+   "why": "Nagasawa Rosetsu, Puppies, Sparrows, and Chrysanthemums (panel): puppies made of ink blots with a few lines"
+  },
+  {
+   "accession": "1970.71.2",
+   "why": "Nagasawa Rosetsu, Puppies, Sparrows, and Chrysanthemums (panel)"
+  },
+  {
+   "accession": "2015.509",
+   "why": "Yang Ki-hun, Egret and Reeds: Korean ink, wash and line"
+  }
+ ]
+}

@@ -10,7 +10,7 @@ on:
         default: "10"
   push:
     branches: [main]
-    paths: ["tools/build_library.py", ".github/workflows/build-library.yml"]
+    paths: ["tools/build_library.py", "data/curated.json", ".github/workflows/build-library.yml"]
 permissions:
   contents: write
 jobs:
