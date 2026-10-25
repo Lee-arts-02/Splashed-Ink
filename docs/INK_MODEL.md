@@ -71,6 +71,15 @@ The *Brush* tool paints with the same line recipe, driven by how the hand moves 
 The constants were chosen by eye. The recipe's width and density were checked against synthetic lines of known width in Machine Copy;
 the mapping from human speed to width and dryness was tuned by drawing test strokes, not fitted to real brush data.
 
+## Washes as lobes (Machine Copy)
+
+A painter lays a leaf lobe with one pressed stroke, so a wash is split into lobes before it is painted. The wash mask minus the
+dark lines inside it (veins usually sit where one lobe meets the next) goes through a watershed on the distance to the edge; two
+parts merge unless the neck between them is narrower than `neck` (default 0.8) times the smaller part's half-width. Each lobe is
+painted as one stroke along its long axis (from its principal direction), as wide as the lobe is at each point, so its outline
+stays an oval instead of breaking into discs. A lobe is wet or dry by its tone and streakiness, not by its width. URL parameters:
+`lobes=0` goes back to strokes along the medial axis, `neck=` sets the merge threshold, `vein=0` stops cutting at interior lines.
+
 ## How a copy is scored (Machine Copy)
 
 Both measures compare the finished simulation's tone map with the target, at the analysis resolution.

@@ -348,6 +348,49 @@ function lineSkeleton(T,W,H){
   dropSmall(mask,W,H,5);
   return {ro,op,mask,sk:thin(mask,W,H)}; }
 
+// Washes as lobes. A painter lays a leaf lobe with one pressed stroke, so the wash area is cut where it narrows
+// (a watershed on the distance to the edge, merging two parts unless the neck between them is under NECK x the smaller part's
+// half-width) and each part becomes one stroke along its long axis, as wide as the part is at every point along it.
+const LOBES=P.get('lobes')!=='0', NECK=+P.get('neck')||0.8, VEIN=P.get('vein')!=='0';
+function lobeStrokes(rm,dt,W,H,rhoMin,meanOp){
+  const n=W*H, lab=new Int32Array(n).fill(-1), order=[];
+  for(let j=0;j<n;j++) if(rm[j]) order.push(j);
+  order.sort((a,b)=>dt[b]-dt[a]);
+  const par=[], peak=[]; const find=a=>{ while(par[a]!==a){ par[a]=par[par[a]]; a=par[a]; } return a; };
+  for(const j of order){
+    const x=j%W, y=(j/W)|0; const roots=new Set();
+    for(const [dx,dy] of NB){ const X=x+dx, Y=y+dy; if(X<0||Y<0||X>=W||Y>=H) continue; const l=lab[Y*W+X]; if(l>=0) roots.add(find(l)); }
+    if(!roots.size){ par.push(par.length); peak.push(dt[j]); lab[j]=par.length-1; continue; }
+    const rs=[...roots].sort((a,b)=>peak[b]-peak[a]); lab[j]=rs[0];
+    for(let k=1;k<rs.length;k++){ const a=find(rs[0]), b=find(rs[k]); if(a===b) continue;
+      if(dt[j]>=NECK*Math.min(peak[a],peak[b])){ par[b]=a; peak[a]=Math.max(peak[a],peak[b]); } } }
+  const groups=new Map();
+  for(const j of order){ const r=find(lab[j]); if(!groups.has(r)) groups.set(r,[]); groups.get(r).push(j); }
+  const out=[];
+  for(const [r,px] of groups){
+    if(peak[r]<rhoMin*0.9||px.length<Math.PI*rhoMin*rhoMin) continue;          // too small: left for round pours
+    let mx=0,my=0; for(const j of px){ mx+=j%W; my+=(j/W)|0; } mx/=px.length; my/=px.length;
+    let cxx=0,cyy=0,cxy=0; for(const j of px){ const dx=j%W-mx, dy=((j/W)|0)-my; cxx+=dx*dx; cyy+=dy*dy; cxy+=dx*dy; }
+    const ang=0.5*Math.atan2(2*cxy,cxx-cyy), ax=Math.cos(ang), ay=Math.sin(ang);
+    let umin=1e9,umax=-1e9; for(const j of px){ const u=(j%W-mx)*ax+(((j/W)|0)-my)*ay; if(u<umin)umin=u; if(u>umax)umax=u; }
+    const step=Math.max(1,0.35*peak[r]), nb=Math.max(2,Math.ceil((umax-umin)/step)+1);
+    const lo=new Float32Array(nb).fill(1e9), hi=new Float32Array(nb).fill(-1e9);
+    for(const j of px){ const dx=j%W+0.5-mx-0.5, dy=((j/W)|0)-my; const u=dx*ax+dy*ay, v=-dx*ay+dy*ax; const b=Math.min(nb-1,Math.max(0,Math.round((u-umin)/step)));
+      if(v<lo[b]) lo[b]=v; if(v>hi[b]) hi[b]=v; }
+    let pts=[];
+    for(let b=0;b<nb;b++){ if(hi[b]<lo[b]) continue; const u=umin+b*step, vc=(lo[b]+hi[b])/2, hw=(hi[b]-lo[b])/2+0.5;
+      pts.push([mx+u*ax-vc*ay+0.5, my+u*ay+vc*ax+0.5, hw]); }
+    if(pts.length<2) continue;
+    const ps=smoothSeq(pts.map(q=>[q[0],q[1]]),1), rs=smoothSeq(pts.map(q=>q[2]),1);
+    const cap=Math.max(...pts.map(q=>q[2]));
+    let sp=ps.map((q,i)=>{ const rho=Math.min(cap,rs[i]); return [q[0],q[1],rho,meanOp(q[0],q[1],0.6*rho),0]; });
+    let len=0; for(let i=1;i<sp.length;i++) len+=Math.hypot(sp[i][0]-sp[i-1][0],sp[i][1]-sp[i-1][1]);
+    const k=sp.length, h=Math.max(1,Math.floor(k/2)); let a=0,bb=0; for(let i=0;i<h;i++){ a+=sp[i][2]; bb+=sp[k-1-i][2]; }
+    if(k>1&&a<bb) sp.reverse();
+    const rmean=sp.reduce((t,q)=>t+q[2],0)/k;
+    out.push({pts:sp,len,rmean,lobe:true}); }
+  return out; }
+
 // Splits a target ink map T (0..1) into washes (discs) and strokes (centre lines with width).
 function buildPlan(T,W,H,Tf,FW,FH){
   const t0=performance.now(); const R=brushR(W,H);
@@ -396,7 +439,9 @@ function buildPlan(T,W,H,Tf,FW,FH){
       if(Math.hypot(xx+0.5-x,yy+0.5-y)<=r){ sm+=op[yy*W+xx]; c++; } }
     return c?sm/c:0.3; };
   let washStrokes=[];
-  for(const path of traceSkeleton(thin(rm,W,H),W,H)){
+  if(LOBES){ const rmL=new Uint8Array(W*H); for(let j=0;j<W*H;j++) rmL[j]=rm[j]&&!(VEIN&&mask[j])?1:0;   // the dark lines inside a wash are where one lobe meets the next
+    washStrokes=lobeStrokes(rmL,edt(rmL,W,H),W,H,rhoMin,meanOp); }
+  else for(const path of traceSkeleton(thin(rm,W,H),W,H)){
     if(path.length<6) continue;
     let pts=smoothSeq(path.map(i=>[(i%W)+0.5,((i/W)|0)+0.5]),3), rho=smoothSeq(path.map(i=>dtW[i]),4);
     let len=0; for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
@@ -422,7 +467,7 @@ function buildPlan(T,W,H,Tf,FW,FH){
   for(const ws of washStrokes){
     const q=ws.pts, rmax=Math.max(...q.map(p=>p[2])), k=Math.min(4,Math.ceil(rmax/rcap));
     ws.rparent=rmax;
-    if(k<=1){ expanded.push(ws); continue; }
+    if(k<=1||(ws.lobe&&rmax<=3.4*R)){ expanded.push(ws); continue; }   // a lobe stays one stroke unless it is wider than the largest brush
     const nrm=q.map((p,i)=>{ const a=q[Math.max(0,i-1)], b=q[Math.min(q.length-1,i+1)]; const tx=b[0]-a[0], ty=b[1]-a[1], m=Math.hypot(tx,ty)||1; return [-ty/m,tx/m]; });
     for(let j=0;j<k;j++){
       const pts=q.map((p,i)=>{ const off=(-1+(2*j+1)/k)*p[2]; return [p[0]+nrm[i][0]*off,p[1]+nrm[i][1]*off,p[2]/k*1.12,p[3],p[4],0,0,p[7]]; });
@@ -444,7 +489,7 @@ function buildPlan(T,W,H,Tf,FW,FH){
     const n=ws.pts.length; let tone=0; for(const q of ws.pts) tone+=q[3]; tone/=n;
     ws.streak=streakOf(ws.pts);
     const dryF=smooth(0.10,0.30,ws.streak);
-    ws.dry=!(ws.rparent>=1.4*R && tone>=0.45 && dryF<0.5);
+    ws.dry=ws.lobe? !(tone>=0.4 && dryF<0.5) : !(ws.rparent>=1.4*R && tone>=0.45 && dryF<0.5);   // a lobe is judged by its tone and streaks, not by its width
     ws.pts.forEach((q,i)=>{ const u=n>1?i/(n-1):0; q[4]=ws.dry?Math.min(0.85,0.08+0.42*dryF+0.35*u*u):0.12+0.5*u*u*u; }); }   // how broken a dry stroke runs follows how streaky the original is there
   const cand=[]; for(let j=0;j<W*H;j++) if(rm[j]&&!cov[j]&&dtW[j]>=rhoMin) cand.push(j);
   cand.sort((a,b)=>dtW[b]-dtW[a]);
