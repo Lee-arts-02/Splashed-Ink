@@ -38,7 +38,8 @@ def get_json(url, tries=3):
 
 
 def key_of(name):
-    return re.compile(re.escape(name.split(" ")[0]), re.I)
+    # the whole name, so "Chen Chun" does not also match Chen Hongshou
+    return re.compile(r"\b" + re.escape(name), re.I)
 
 
 def cleveland(name, per, log):
@@ -138,6 +139,7 @@ def main():
             "| Painting | Artist | Date | Source | Lobes | Lines |", "|---|---|---|---|---|---|"]
     for p in lib["paintings"]:
         rows.append(f"| [{p.get('title','').replace('|','/')}]({p.get('url','')}) | {p.get('artist','').replace('|','/')} | {p.get('date','')} | {p.get('source','')} | {p.get('lobes',0)} | {p.get('lines',0)} |")
+    rows += ["", "## Search log", ""] + [f"* {l}" for l in log]
     src.write_text("\n".join(rows) + "\n")
     return 0 if lib["lobes"] else 1
 

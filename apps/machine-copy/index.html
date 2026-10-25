@@ -568,7 +568,7 @@ function buildPlan(T,W,H,Tf,FW,FH){
 // Every line of the plan is split into runs by the lobe it lies nearest to (within about one half-width of the lobe's edge);
 // each run is stored in that lobe's own frame. A lobe with no lines is kept too: the painter chose to leave it as it was.
 function lobeRecords(pl,W,H,T){
-  const G=pl.lobeGroups||[]; if(!G.length) return [];
+  const G=(pl.lobeGroups||[]).filter(px=>px.length>=Math.max(12,0.0006*W*H)); if(!G.length) return [];   // specks are not blots
   const n=W*H, own=new Int32Array(n).fill(-1), dist=new Float32Array(n).fill(1e9), q=[];
   G.forEach((px,i)=>{ for(const j of px){ own[j]=i; dist[j]=0; q.push(j); } });
   for(let h=0;h<q.length;h++){ const j=q[h], x=j%W, y=(j/W)|0;                     // nearest lobe for every cell, by a breadth-first spread
@@ -854,7 +854,7 @@ const CMA='https://openaccess-api.clevelandart.org/api/artworks/';
 async function* fromCleveland(name,diag){
   let r; try{ r=await (await fetch(`${CMA}?q=${encodeURIComponent(name)}&cc0=1&has_image=1&type=Painting&limit=40&fields=id,title,creators,creation_date,technique,images,url`)).json(); diag.searchOk++; }
   catch(e){ diag.searchFail++; return; }
-  const key=name.split(' ')[0];
+  const key=name;
   for(const o of (r.data||[])){ diag.records++;
     const who=(o.creators||[]).map(c=>c.description||'').join('; ');
     if(!new RegExp(key,'i').test(who)||!/ink/i.test(o.technique||'')){ diag.filtered++; continue; }
@@ -865,7 +865,7 @@ async function* fromMet(name,diag){
   catch(e){ diag.searchFail++; return; }
   for(const id of ids){
     let o; try{ o=await (await fetch(`${MET}objects/${id}`)).json(); diag.records++; }catch(e){ diag.recordFail++; continue; }
-    if(!o||!o.isPublicDomain||!/ink/i.test(o.medium||'')||!/paint|album|scroll/i.test((o.classification||'')+' '+(o.objectName||''))||!new RegExp(name.split(' ')[0],'i').test(o.artistDisplayName||'')){ diag.filtered++; continue; }
+    if(!o||!o.isPublicDomain||!/ink/i.test(o.medium||'')||!/paint|album|scroll/i.test((o.classification||'')+' '+(o.objectName||''))||!new RegExp(name,'i').test(o.artistDisplayName||'')){ diag.filtered++; continue; }
     const imgs=[o.primaryImageSmall,...(o.additionalImages||[]).map(u=>u.replace('/original/','/web-large/'))].filter(Boolean).slice(0,12);
     if(!imgs.length){ diag.noImage++; continue; }
     for(let k=0;k<imgs.length;k++) yield {src:imgs[k], meta:{title:o.title+(imgs.length>1?` (image ${k+1})`:''),artist:o.artistDisplayName,date:o.objectDate,source:'The Metropolitan Museum of Art',url:o.objectURL,image:imgs[k],license:'CC0 (The Met Open Access)'}}; } }
