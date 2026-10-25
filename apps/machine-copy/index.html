@@ -44,6 +44,10 @@ figcaption{color:var(--ink-soft);font-size:1rem;margin-top:.35rem;font-style:ita
 .status{margin:1rem 0 .4rem;color:var(--ink-soft);min-height:1.6em}
 .meter{height:3px;background:var(--line);position:relative;overflow:hidden;max-width:28rem}
 .meter i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--seal);transition:width .3s}
+h2{font-weight:500;font-size:1.7rem;margin:2.2rem 0 .3rem}
+.lib .lede{margin-bottom:.8rem}
+.libList{list-style:none;padding:0;margin:.3rem 0;color:var(--ink-soft);font-size:1rem;max-height:14rem;overflow:auto}
+.libList a{color:inherit}
 details{margin-top:1.4rem;color:var(--ink-soft);max-width:46rem}
 summary{cursor:pointer;color:var(--ink)}
 .empty{color:#6b6a64;font-style:italic;padding:1rem;text-align:center;position:absolute}
@@ -80,6 +84,19 @@ summary{cursor:pointer;color:var(--ink)}
     <summary>How it works</summary>
     <p>Washes are the ink that is wider than a brush line. A broad stroke is dragged along the centre of each wash, as wide as the wash is at every point, and it is painted wet or dry depending on the image: wide, dark, smooth areas are laid as wet ink, while narrower or streaky ones are dragged with little water so the bristle marks and white gaps stay. Wet areas go down first and dry strokes are laid over them once they have settled. Round pours fill in whatever the strokes leave uncovered. The sizes come from a short calibration run on blank paper. Strokes are the thin dark structures left over. Each is thinned to a centre line, and the distance to the edge gives its width at every point. The brush then travels along that line, wide where the original is wide, thinning to the tip. Lighter strokes are drawn before darker ones, and a stroke starts at its thicker end. How dry a line runs (the broken white streaks) is measured where the original shows gaps along it, at the image's own resolution, and each stroke is also assumed to run drier toward its tip. Wide strokes are painted wet or dry from how wide, dark and streaky the original is; in a painting whose big areas are smooth wet ink, most of them will be wet and the dry-brush contrast comes from the lines.</p>
   </details>
+
+  <section class="lib" id="lib" aria-labelledby="libTitle">
+    <h2 id="libTitle">Learn from many paintings</h2>
+    <p class="lede">Reads many paintings without painting them, and records how each painter answered a blot of ink: for every lobe of wash, where the lines around it go. Splashed Ink's Reader partner outlines your ink by finding the most similar lobes in this library and borrowing how they were drawn. Only the shapes and line positions are kept, with each painting's title, artist and source.</p>
+    <div class="bar">
+      <button id="libMet" type="button">Fetch public-domain paintings from The Met</button>
+      <label class="file">Add your own images<input id="libFiles" type="file" accept="image/*" multiple></label>
+      <button id="libStop" type="button" disabled>Stop</button>
+      <button id="libExport" type="button" disabled>Export library</button>
+    </div>
+    <p class="status" id="libStatus" role="status">The library is empty.</p>
+    <ul class="libList" id="libList"></ul>
+  </section>
 </main>
 
 <script>
@@ -348,11 +365,45 @@ function lineSkeleton(T,W,H){
   dropSmall(mask,W,H,5);
   return {ro,op,mask,sk:thin(mask,W,H)}; }
 
+// ==== LobeKit begin (shared: keep identical in apps/machine-copy and apps/splashed-ink; the checks compare them) ====
+// A lobe is one part of a blot of ink. LobeKit puts it in a canonical frame, so the same shape seen in a painting and on the
+// paper can be compared, and lines drawn around one can be carried over to the other.
+// Frame: origin at the middle of the lobe's long axis; u runs along the long axis toward the thinner end (the fuller half
+// is at negative u), v runs across it toward the side with more ink. Local coordinates are u / half-length and v / half-width.
+const LobeKit=(()=>{
+  const PB=8;                                                     // the width profile is sampled at PB places along the axis
+  function frame(px,W,tone){
+    const n=px.length; let mx=0,my=0; for(const j of px){ mx+=j%W+0.5; my+=((j/W)|0)+0.5; } mx/=n; my/=n;
+    let cxx=0,cyy=0,cxy=0, tn=0; for(const j of px){ const dx=j%W+0.5-mx, dy=((j/W)|0)+0.5-my; cxx+=dx*dx; cyy+=dy*dy; cxy+=dx*dy; if(tone) tn+=tone[j]; }
+    const ang=0.5*Math.atan2(2*cxy,cxx-cyy), ax=Math.cos(ang), ay=Math.sin(ang);
+    const us=new Float32Array(n), vs=new Float32Array(n); let u0=1e9,u1=-1e9;
+    for(let i=0;i<n;i++){ const j=px[i], dx=j%W+0.5-mx, dy=((j/W)|0)+0.5-my; us[i]=dx*ax+dy*ay; vs[i]=-dx*ay+dy*ax; if(us[i]<u0) u0=us[i]; if(us[i]>u1) u1=us[i]; }
+    const uc=(u0+u1)/2, Lh=Math.max(1,(u1-u0)/2+0.5);
+    let neg=0,pos=0,vp=0,vn=0; for(let i=0;i<n;i++){ if(us[i]<uc) neg++; else pos++; if(vs[i]>0) vp+=Math.abs(vs[i]); else vn+=Math.abs(vs[i]); }
+    const su=neg>=pos?1:-1, sv=vp>=vn?1:-1;
+    const top=new Float32Array(PB), bot=new Float32Array(PB);
+    for(let i=0;i<n;i++){ const u=su*(us[i]-uc), v=sv*vs[i], b=Math.max(0,Math.min(PB-1,Math.floor((u/Lh+1)/2*PB)));
+      if(v+0.5>top[b]) top[b]=v+0.5; if(-v+0.5>bot[b]) bot[b]=-v+0.5; }
+    let hw=0.5; for(let b=0;b<PB;b++) hw=Math.max(hw,(top[b]+bot[b])/2);
+    return { cx:mx+uc*ax, cy:my+uc*ay, eu:[su*ax,su*ay], ev:[-sv*ay,sv*ax], Lh, hw, area:n, tone:tone?tn/n:0,
+      prof:[...top,...bot].map(t=>t/Lh) }; }
+  // features: shape (elongation and width profile), mean tone, and size relative to the sheet's short side
+  function features(fr,short){ return [Math.log(fr.Lh/fr.hw), ...fr.prof, fr.tone, Math.log(fr.Lh/short)]; }
+  const WT=[1.6, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 0.8, 0.5];
+  function dist(a,b){ let s=0; for(let i=0;i<a.length;i++){ const d=(a[i]-b[i])*WT[i]; s+=d*d; } return Math.sqrt(s); }
+  function toLocal(fr,x,y){ const dx=x-fr.cx, dy=y-fr.cy; return [(dx*fr.eu[0]+dy*fr.eu[1])/fr.Lh, (dx*fr.ev[0]+dy*fr.ev[1])/fr.hw]; }
+  function toWorld(fr,u,v){ return [fr.cx+u*fr.Lh*fr.eu[0]+v*fr.hw*fr.ev[0], fr.cy+u*fr.Lh*fr.eu[1]+v*fr.hw*fr.ev[1]]; }
+  return {frame,features,dist,toLocal,toWorld,PB};
+})();
+// ==== LobeKit end ====
+
 // Washes as lobes. A painter lays a leaf lobe with one pressed stroke, so the wash area is cut where it narrows
 // (a watershed on the distance to the edge, merging two parts unless the neck between them is under NECK x the smaller part's
 // half-width) and each part becomes one stroke along its long axis, as wide as the part is at every point along it.
 const LOBES=P.get('lobes')!=='0', NECK=+P.get('neck')||0.8, VEIN=P.get('vein')!=='0';
+let lobeGroupsOut=[];
 function lobeStrokes(rm,dt,W,H,rhoMin,meanOp){
+  lobeGroupsOut=[];
   const n=W*H, lab=new Int32Array(n).fill(-1), order=[];
   for(let j=0;j<n;j++) if(rm[j]) order.push(j);
   order.sort((a,b)=>dt[b]-dt[a]);
@@ -367,6 +418,7 @@ function lobeStrokes(rm,dt,W,H,rhoMin,meanOp){
   const groups=new Map();
   for(const j of order){ const r=find(lab[j]); if(!groups.has(r)) groups.set(r,[]); groups.get(r).push(j); }
   const out=[];
+  for(const [r,px] of groups) if(px.length>=12) lobeGroupsOut.push(px);
   for(const [r,px] of groups){
     if(peak[r]<rhoMin*0.9||px.length<Math.PI*rhoMin*rhoMin) continue;          // too small: left for round pours
     let mx=0,my=0; for(const j of px){ mx+=j%W; my+=(j/W)|0; } mx/=px.length; my/=px.length;
@@ -509,8 +561,27 @@ function buildPlan(T,W,H,Tf,FW,FH){
       if(el>1.25){ const Lh=Math.min(1.6*rho,(el-1)*0.6*rho); dx=Math.cos(ang)*Lh; dy=Math.sin(ang)*Lh; } }
     washes.push({x:cx+0.5,y:cy+0.5,rho,tone:c?sm/c:0.3,dx,dy});
     if(washes.length>250) break; }
-  return {washes,washStrokes,strokes,ro,ms:Math.round(performance.now()-t0)};
+  return {washes,washStrokes,strokes,ro,lobeGroups:LOBES?lobeGroupsOut:[],ms:Math.round(performance.now()-t0)};
 }
+
+// ---------------- lobes and their lines: the data a reading partner learns from ----------------
+// Every line of the plan is split into runs by the lobe it lies nearest to (within about one half-width of the lobe's edge);
+// each run is stored in that lobe's own frame. A lobe with no lines is kept too: the painter chose to leave it as it was.
+function lobeRecords(pl,W,H,T){
+  const G=pl.lobeGroups||[]; if(!G.length) return [];
+  const n=W*H, own=new Int32Array(n).fill(-1), dist=new Float32Array(n).fill(1e9), q=[];
+  G.forEach((px,i)=>{ for(const j of px){ own[j]=i; dist[j]=0; q.push(j); } });
+  for(let h=0;h<q.length;h++){ const j=q[h], x=j%W, y=(j/W)|0;                     // nearest lobe for every cell, by a breadth-first spread
+    for(const [dx,dy] of NB){ const X=x+dx,Y=y+dy; if(X<0||Y<0||X>=W||Y>=H) continue; const i=Y*W+X, d=dist[j]+Math.hypot(dx,dy); if(d<dist[i]-1e-6){ dist[i]=d; own[i]=own[j]; q.push(i); } } }
+  const short=Math.min(W,H), recs=G.map(px=>{ const fr=LobeKit.frame(px,W,T); return {fr,f:LobeKit.features(fr,short),lines:[]}; });
+  const flush=(run,o)=>{ if(!run||run.length<2||o<0) return; let L=0; for(let i=1;i<run.length;i++) L+=Math.hypot(run[i][0]-run[i-1][0],run[i][1]-run[i-1][1]); if(L<3) return; const fr=recs[o].fr;
+    recs[o].lines.push(run.map(p=>{ const [u,v]=LobeKit.toLocal(fr,p[0],p[1]); return [+u.toFixed(3),+v.toFixed(3),+(p[2]/fr.hw).toFixed(3)]; })); };
+  for(const st of pl.strokes){ let run=null, cur=-1;
+    for(const p of st.pts){ const X=Math.min(W-1,Math.max(0,Math.floor(p[0]))), Y=Math.min(H-1,Math.max(0,Math.floor(p[1]))), o=own[Y*W+X];
+      const ok=o>=0&&dist[Y*W+X]<=1.2*recs[o].fr.hw+2;
+      if(ok&&o===cur) run.push(p); else { flush(run,cur); run=ok?[p]:null; cur=ok?o:-1; } }
+    flush(run,cur); }
+  return recs.map(r=>({f:r.f.map(v=>+v.toFixed(3)),lines:r.lines})); }
 
 // ---------------- target ----------------
 let T=null, W=0, H=0, Tf=null, FW=0, FH=0, srcName='painting', loadedImg=null, plan=null, paperSeed=1, sim=null, calTable=null, calKey='';
@@ -752,6 +823,65 @@ btn.run.addEventListener('click',()=>{ if(!plan) return; gain=null; prevScore=nu
 btn.stop.addEventListener('click',()=>{ running=false; });
 btn.refine.addEventListener('click',()=>{ if(!sim||!plan) return; prevScore=lastScore; lastAdded=updateGain(); refinePass++; drawAnalysis(); running=true; setBusy(true); drive(fullJob(true),finish); });
 btn.replay.addEventListener('click',()=>{ if(!sim||!plan) return; running=true; setBusy(true); drive(execute(sim,plan,paperSeed),finish); });
+// ---------------- library builder ----------------
+const lib={paintings:[],lobes:[]}; let libBusy=false, libHalt=false;
+const libEl={status:$('libStatus'),list:$('libList'),met:$('libMet'),files:$('libFiles'),stop:$('libStop'),export:$('libExport')};
+function libRefresh(){ libEl.export.disabled=libBusy||!lib.lobes.length; libEl.met.disabled=libBusy; libEl.files.disabled=libBusy; libEl.stop.disabled=!libBusy; btn.run.disabled=libBusy||!plan; }
+function libAdd(img,meta){
+  if(sim){ freeSim(sim); sim=null; } calTable=null; loadedImg=img;
+  prepareTarget(img); plan=buildPlan(T,W,H,Tf,FW,FH); drawAnalysis(); btn.run.textContent='Start copying'; btn.replay.disabled=true;
+  const recs=lobeRecords(plan,W,H,T), p=lib.paintings.length, lines=recs.reduce((a,r)=>a+r.lines.length,0);
+  lib.paintings.push({...meta,aspect:+(W/H).toFixed(4),lobes:recs.length,lines});
+  for(const r of recs) lib.lobes.push({p,...r});
+  const li=document.createElement('li'); li.innerHTML=`${meta.url?`<a href="${meta.url}" target="_blank" rel="noopener">`:''}${(meta.title||'untitled').replace(/</g,'&lt;')}${meta.url?'</a>':''}${meta.artist?', '+meta.artist.replace(/</g,'&lt;'):''}: ${recs.length} lobes, ${lines} lines`; libEl.list.prepend(li);
+  return recs.length; }
+const loadImg=(src,cors)=>new Promise((res,rej)=>{ const im=new Image(); if(cors) im.crossOrigin='anonymous'; const t=setTimeout(()=>rej(new Error('timeout')),30000);
+  im.onload=()=>{ clearTimeout(t); res(im); }; im.onerror=()=>{ clearTimeout(t); rej(new Error('load')); }; im.src=src; });
+const pause=ms=>new Promise(r=>setTimeout(r,ms));
+libEl.files.addEventListener('change',async e=>{ const fs=[...(e.target.files||[])]; e.target.value=''; if(!fs.length) return;
+  libBusy=true; libHalt=false; libRefresh(); let k=0;
+  for(const f of fs){ if(libHalt) break; k++; libEl.status.textContent=`Reading ${k} of ${fs.length}: ${f.name}`;
+    try{ const u=URL.createObjectURL(f), im=await loadImg(u,false); URL.revokeObjectURL(u); libAdd(im,{title:f.name.replace(/\.[^.]+$/,''),source:'file',license:'unknown: check the rights before sharing a library built from this'}); }
+    catch(err){ libEl.status.textContent=`${f.name} could not be read as an image.`; }
+    await pause(30); }
+  libBusy=false; libRefresh(); libEl.status.textContent=`The library has ${lib.lobes.length} lobes from ${lib.paintings.length} paintings.`; });
+// The Met's Open Access works are public domain (CC0). Painters of xieyi, the free, splashed manner, and their followers.
+const MET='https://collectionapi.metmuseum.org/public/collection/v1/';
+const MET_ARTISTS=(P.get('artists')||'Bada Shanren|Xu Wei|Shitao|Chen Chun|Li Shan|Li Fangying|Huang Shen|Gao Fenghan|Zhu Da|Xugu|Ren Yi|Wu Changshuo').split('|');
+const MET_PER=+P.get('per')||8;
+libEl.met.addEventListener('click',async()=>{
+  libBusy=true; libHalt=false; libRefresh(); let ok=0, fail=0, seen=new Set(lib.paintings.map(p=>p.image));
+  try{
+    for(const name of MET_ARTISTS){ if(libHalt) break; libEl.status.textContent=`Looking up ${name} at The Met`;
+      let ids=[]; try{ const r=await (await fetch(`${MET}search?artistOrCulture=true&hasImages=true&q=${encodeURIComponent(name)}`)).json(); ids=(r.objectIDs||[]).slice(0,40); }
+      catch(e){ throw new Error('api'); }
+      let got=0;
+      for(const id of ids){ if(libHalt||got>=MET_PER) break;
+        let o; try{ o=await (await fetch(`${MET}objects/${id}`)).json(); }catch(e){ continue; }
+        if(!o||!o.isPublicDomain||!/ink/i.test(o.medium||'')||!/paint|album|scroll/i.test((o.classification||'')+' '+(o.objectName||''))) continue;
+        if(!new RegExp(name.split(' ')[0],'i').test(o.artistDisplayName||'')) continue;
+        const imgs=[o.primaryImageSmall,...(o.additionalImages||[]).map(u=>u.replace('/original/','/web-large/'))].filter(Boolean).slice(0,12);
+        for(let k=0;k<imgs.length&&!libHalt;k++){ const u=imgs[k]; if(seen.has(u)) continue; seen.add(u);
+          libEl.status.textContent=`Reading ${o.title} by ${o.artistDisplayName} (${k+1} of ${imgs.length})`;
+          try{ const im=await loadImg(u,true); libAdd(im,{title:o.title+(imgs.length>1?` (image ${k+1})`:''),artist:o.artistDisplayName,date:o.objectDate,source:'The Metropolitan Museum of Art',url:o.objectURL,image:u,license:'CC0 (The Met Open Access)'}); ok++; }
+          catch(e){ fail++; }
+          await pause(60); }
+        got++; } }
+    libEl.status.textContent=ok?`Read ${ok} images${fail?` (${fail} could not be loaded)`:''}. The library has ${lib.lobes.length} lobes from ${lib.paintings.length} paintings.`
+      :`No images could be read from The Met here${fail?`: its image server did not allow this page to read ${fail} images`:''}. Download images from metmuseum.org (filter by Open Access) and use Add your own images.`; }
+  catch(e){ libEl.status.textContent='The Met collection could not be reached from this page. Download images from metmuseum.org (filter by Open Access) and use Add your own images.'; }
+  libBusy=false; libRefresh(); });
+libEl.stop.addEventListener('click',()=>{ libHalt=true; });
+function libraryJson(){ return JSON.stringify({format:'splashed-ink-lobes/v1',created:new Date().toISOString(),
+  analysis:{shortSide:SHORT,neck:NECK,cutAtLines:VEIN,lineReach:'1.2 x half-width + 2 cells from the lobe edge'},
+  featureNames:['log elongation',...Array.from({length:LobeKit.PB},(_,i)=>'width above '+i),...Array.from({length:LobeKit.PB},(_,i)=>'width below '+i),'mean tone','log size'],
+  lineColumns:['u (along the long axis, -1 fuller end to 1 thinner end)','v (across, in half-widths, positive toward the heavier side)','width (in half-widths)'],
+  paintings:lib.paintings,lobes:lib.lobes}); }
+async function saveText(name,data,el){
+  if(downloads){ try{ await downloads.save({filename:name,data}); el.textContent='Exported.'; return; }catch(e){ if(e&&e.code==='declined'){ el.textContent='Export cancelled.'; return; } } }
+  try{ const bl=new Blob([data],{type:'application/json'}), a=document.createElement('a'); a.href=URL.createObjectURL(bl); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); el.textContent='Exported.'; return; }catch(e){}
+  try{ await navigator.clipboard.writeText(data); el.textContent='Downloads are not available here, so it was copied to the clipboard as JSON.'; }catch(e){ el.textContent='Export is not available in this view.'; } }
+libEl.export.addEventListener('click',()=>saveText('lobes-v1.json',libraryJson(),libEl.status));
 let downloads=null;
 (async()=>{ try{ if(window.claude&&window.claude.use) downloads=await window.claude.use('downloads'); }catch(e){ downloads=null; } })();
 function exportData(){
@@ -781,7 +911,7 @@ window.__mc={ get plan(){return plan;}, get size(){return [W,H];}, get running()
   refine(){ prevScore=lastScore; lastAdded=updateGain(); refinePass++; running=true; job={gen:fullJob(true),onDone:finish}; }, pump(ms){ const t0=performance.now(); while(job&&performance.now()-t0<ms){ const r=job.gen.next(); updateStatus(); if(r.done){ const ok=r.value!==false&&running; const d=job; job=null; d.onDone(ok); } } if(sim) simShow(sim); return !!job; },
   test(w,h,pl){ if(sim){ freeSim(sim); } W=w; H=h; T=new Float32Array(w*h); plan=pl; cv.width=w*2; cv.height=h*2; sim=makeSim(w,h,7); const R=brushR(w,h);
     pl.washStrokes=pl.washStrokes||[]; for(const x of pl.washes){ x.ink=x.ink||0.8; } running=true; job={gen:execute(sim,pl,7),onDone:()=>{running=false;}}; },
-  get T(){ return Array.from(T); }, density(){ return sim?Array.from(simDensity(sim)):null; }, score(){ return sim?score():null; }, get lastScore(){ return lastScore; }, scoreMaps(D,T,w,h){ return scoreMaps(Float32Array.from(D),Float32Array.from(T),w,h); }, exportJson(){ return exportData(); } };
+  get T(){ return Array.from(T); }, lobeRecords(){ return lobeRecords(plan,W,H,T); }, get lib(){ return lib; }, libraryJson, libAdd(src,meta){ return loadImg(src,false).then(im=>libAdd(im,meta||{title:'test'})); }, density(){ return sim?Array.from(simDensity(sim)):null; }, score(){ return sim?score():null; }, get lastScore(){ return lastScore; }, scoreMaps(D,T,w,h){ return scoreMaps(Float32Array.from(D),Float32Array.from(T),w,h); }, exportJson(){ return exportData(); } };
 })();
 </script>
 </body>

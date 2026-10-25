@@ -559,6 +559,10 @@
             },
             "prompt": {
               "type": "string"
+            },
+            "note": {
+              "type": "string",
+              "description": "What the partner reports about its turn, for the record (for example which paintings the Reader borrowed from). Never shown to the person while painting."
             }
           }
         }

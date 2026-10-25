@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Splashed Ink plan and session files against the schemas in docs/schema.
+"""Validate Splashed Ink plan, session and lobe library files against the schemas in docs/schema.
 
     pip install jsonschema
     python tools/validate.py examples/plan-example.json examples/session-example.json
@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMAS = {
     "splashed-ink-plan/v2": ROOT / "docs/schema/plan-v2.schema.json",
     "splashed-ink-session/v1": ROOT / "docs/schema/session-v1.schema.json",
+    "splashed-ink-lobes/v1": ROOT / "docs/schema/lobes-v1.schema.json",
 }
 
 def session_checks(doc):

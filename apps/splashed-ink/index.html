@@ -170,7 +170,8 @@ button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid va
   </div>
   <h3 style="font-weight:500;margin:1rem 0 0">Saved sessions</h3>
   <ul class="sessions" id="sessList"></ul>
-  <div class="row"><span class="file btn">Import a session<input id="sessImport" type="file" accept="application/json,.json"></span></div>
+  <div class="row"><span class="file btn">Import a session<input id="sessImport" type="file" accept="application/json,.json"></span><span class="file btn">Load a lobe library<input id="libImport" type="file" accept="application/json,.json"></span></div>
+  <p class="blurb" id="libInfo"></p>
   <p class="blurb" style="margin-top:.8rem">Records stay in this browser unless you export them. When you pass the paper, a picture of it and the details you allow are sent to your partner.</p>
 </section>
 
@@ -687,6 +688,37 @@ const LOCAL={
     const vx=cx-bx, vy=cy-by;                                                   // then tilt toward the existing ink so the two meet
     return {gestures:[{type:'pour',x:bx,y:by,seconds:1.6,path:[[cl01(bx+vx*0.25),cl01(by+vy*0.25)]]},{type:'wait',seconds:0.5},{type:'tilt',dx:vx,dy:vy,seconds:1.2}]}; }}
 };
+// ==== LobeKit begin (shared: keep identical in apps/machine-copy and apps/splashed-ink; the checks compare them) ====
+// A lobe is one part of a blot of ink. LobeKit puts it in a canonical frame, so the same shape seen in a painting and on the
+// paper can be compared, and lines drawn around one can be carried over to the other.
+// Frame: origin at the middle of the lobe's long axis; u runs along the long axis toward the thinner end (the fuller half
+// is at negative u), v runs across it toward the side with more ink. Local coordinates are u / half-length and v / half-width.
+const LobeKit=(()=>{
+  const PB=8;                                                     // the width profile is sampled at PB places along the axis
+  function frame(px,W,tone){
+    const n=px.length; let mx=0,my=0; for(const j of px){ mx+=j%W+0.5; my+=((j/W)|0)+0.5; } mx/=n; my/=n;
+    let cxx=0,cyy=0,cxy=0, tn=0; for(const j of px){ const dx=j%W+0.5-mx, dy=((j/W)|0)+0.5-my; cxx+=dx*dx; cyy+=dy*dy; cxy+=dx*dy; if(tone) tn+=tone[j]; }
+    const ang=0.5*Math.atan2(2*cxy,cxx-cyy), ax=Math.cos(ang), ay=Math.sin(ang);
+    const us=new Float32Array(n), vs=new Float32Array(n); let u0=1e9,u1=-1e9;
+    for(let i=0;i<n;i++){ const j=px[i], dx=j%W+0.5-mx, dy=((j/W)|0)+0.5-my; us[i]=dx*ax+dy*ay; vs[i]=-dx*ay+dy*ax; if(us[i]<u0) u0=us[i]; if(us[i]>u1) u1=us[i]; }
+    const uc=(u0+u1)/2, Lh=Math.max(1,(u1-u0)/2+0.5);
+    let neg=0,pos=0,vp=0,vn=0; for(let i=0;i<n;i++){ if(us[i]<uc) neg++; else pos++; if(vs[i]>0) vp+=Math.abs(vs[i]); else vn+=Math.abs(vs[i]); }
+    const su=neg>=pos?1:-1, sv=vp>=vn?1:-1;
+    const top=new Float32Array(PB), bot=new Float32Array(PB);
+    for(let i=0;i<n;i++){ const u=su*(us[i]-uc), v=sv*vs[i], b=Math.max(0,Math.min(PB-1,Math.floor((u/Lh+1)/2*PB)));
+      if(v+0.5>top[b]) top[b]=v+0.5; if(-v+0.5>bot[b]) bot[b]=-v+0.5; }
+    let hw=0.5; for(let b=0;b<PB;b++) hw=Math.max(hw,(top[b]+bot[b])/2);
+    return { cx:mx+uc*ax, cy:my+uc*ay, eu:[su*ax,su*ay], ev:[-sv*ay,sv*ax], Lh, hw, area:n, tone:tone?tn/n:0,
+      prof:[...top,...bot].map(t=>t/Lh) }; }
+  // features: shape (elongation and width profile), mean tone, and size relative to the sheet's short side
+  function features(fr,short){ return [Math.log(fr.Lh/fr.hw), ...fr.prof, fr.tone, Math.log(fr.Lh/short)]; }
+  const WT=[1.6, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 0.8, 0.5];
+  function dist(a,b){ let s=0; for(let i=0;i<a.length;i++){ const d=(a[i]-b[i])*WT[i]; s+=d*d; } return Math.sqrt(s); }
+  function toLocal(fr,x,y){ const dx=x-fr.cx, dy=y-fr.cy; return [(dx*fr.eu[0]+dy*fr.eu[1])/fr.Lh, (dx*fr.ev[0]+dy*fr.ev[1])/fr.hw]; }
+  function toWorld(fr,u,v){ return [fr.cx+u*fr.Lh*fr.eu[0]+v*fr.hw*fr.ev[0], fr.cy+u*fr.Lh*fr.eu[1]+v*fr.hw*fr.ev[1]]; }
+  return {frame,features,dist,toLocal,toWorld,PB};
+})();
+// ==== LobeKit end ====
 // ---- reading the ink: blots and their lobes, as Machine Copy finds them in paintings ----
 // A blot is ink wider than a line. It is cut into lobes where it narrows (a watershed on the distance to its edge), and each
 // lobe is described by its centre, long axis, length, width, outline, tone, wetness and how much of it is new since the last look.
@@ -723,7 +755,7 @@ function readBlots(m,prev){
       const b=((Math.round(Math.atan2(dy,dx)/(2*Math.PI)*B)%B)+B)%B, d=Math.hypot(dx,dy)+0.7; if(d>rad[b]) rad[b]=d; }
     for(let b=0;b<B;b++) if(!rad[b]) rad[b]=Math.max(rad[(b+B-1)%B],rad[(b+1)%B]);
     const rs=rad.map((_,b)=>(rad[(b+B-1)%B]+2*rad[b]+rad[(b+1)%B])/4);
-    lobes.push({cx:mx+0.5,cy:my+0.5,ax,ay,u0:umin,u1:umax,hw:Math.max(1,vmax),area:N,tone:tn/N,wet:wt/N,fresh:prev?nw/N:1,rad:rs,B}); }
+    lobes.push({cx:mx+0.5,cy:my+0.5,ax,ay,u0:umin,u1:umax,hw:Math.max(1,vmax),area:N,tone:tn/N,wet:wt/N,fresh:prev?nw/N:1,rad:rs,B,fr:LobeKit.frame(px,W,tone)}); }
   return lobes; }
 const lerp=(a,b,t)=>a+(b-a)*t;
 // one lobe, read as a painter would: a line along part of its edge, a vein along its axis with a few side veins,
@@ -766,9 +798,41 @@ LOCAL.reader={label:'Reader (outlines what you splashed)', prev:null, async turn
   lobes.sort((a,b)=>(b.area*(0.3+b.fresh))-(a.area*(0.3+a.fresh)));
   const pick=lobes.slice(0,Math.min(lobes.length,lobes.length>3?3:lobes.length)), g=[];
   const ink=ctx.settings.ink==='unlimited'?0.92:undefined;
+  if(LIB){ const r=borrowOutlines(pick,W,H,rd,ink); if(r.gestures.length) return r; }
   for(const L of pick){ if(g.length>=12) break; g.push(...outlineLobe(L,W,H,rd,{wetFirst:L.wet>0.25&&rd()<0.7,ink})); }
   if(rd()<0.6) g.push(...stemFrom(pick[0],W,H,m,rd,ink));
-  return {gestures:g.slice(0,14).map(x=>x.ink===undefined?(({ink,...y})=>y)(x):x)}; }};
+  return {gestures:g.slice(0,14).map(x=>x.ink===undefined?(({ink,...y})=>y)(x):x),note:'rules (no library loaded)'}; }};
+// ---- learning from paintings: borrow how painters outlined the lobes most like yours ----
+// LIB is a lobe library built by Machine Copy from paintings. For each of your lobes, the nearest lobes in the library (by
+// elongation, width profile, tone and size) are found; one of the closest is chosen, and its painter's lines are carried into
+// your lobe's frame, stretched to its length and width. A lobe the painter left without lines may be left alone here too.
+let LIB=null;
+function setLibrary(j,from){ if(!j||j.format!=='splashed-ink-lobes/v1'||!Array.isArray(j.lobes)||!j.lobes.length) return false;
+  LIB={paintings:j.paintings||[],lobes:j.lobes.filter(l=>Array.isArray(l.f)&&l.f.length===2*LobeKit.PB+3),from};
+  LOCAL.reader.label=`Reader (outlines your ink, learned from ${LIB.paintings.length} paintings)`; if(typeof refreshPartners==='function') refreshPartners(); return true; }
+function borrowOutlines(pick,W,H,rd,ink){
+  const short=Math.min(W,H), g=[], used=[];
+  for(const L of pick){ if(g.length>=13) break;
+    const f=LobeKit.features(L.fr,short), near=LIB.lobes.map(l=>[LobeKit.dist(f,l.f),l]).sort((a,b)=>a[0]-b[0]).slice(0,8);
+    const d0=near[0][0]+0.25, ws=near.map(([d])=>Math.exp(-(d-near[0][0])/d0)); let t=rd()*ws.reduce((a,b)=>a+b,0), k=0; while(k<near.length-1&&(t-=ws[k])>0) k++;
+    let src=near[k][1];
+    if(!src.lines.length){ if(rd()<0.6){ used.push(src.p); continue; } const alt=near.find(([,l])=>l.lines.length); if(!alt) continue; src=alt[1]; }
+    used.push(src.p);
+    const lines=src.lines.map(ln=>{ const pts=ln.map(([u,v,w])=>{ const [x,y]=LobeKit.toWorld(L.fr,u,v); return [x,y,w*L.fr.hw]; });
+      let len=0; for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
+      const inner=ln.reduce((a,p)=>a+Math.abs(p[1]),0)/ln.length<0.7; return {pts,len,inner}; })
+      .filter(l=>l.len>=2&&l.pts.every(p=>p[0]>-2&&p[1]>-2&&p[0]<W+2&&p[1]<H+2)).sort((a,b)=>b.len-a.len);
+    const take=lines.slice(0,8).filter((_,i)=>i<2||rd()<0.6).slice(0,5);
+    const wetFirst=L.wet>0.25&&rd()<0.7, order=wetFirst?[...take.filter(l=>l.inner),null,...take.filter(l=>!l.inner)]:take;
+    for(const l of order){
+      if(l===null){ if(g.length&&g[g.length-1].type!=='wait') g.push({type:'wait',seconds:r3(1.4+rd()*1.6)}); continue; }
+      const step=Math.max(1,Math.ceil(l.pts.length/10)), pts=l.pts.filter((_,i)=>i%step===0||i===l.pts.length-1).slice(0,10);
+      const path=pts.map(p=>[r4(cl01(p[0]/W,0.005,0.995)),r4(cl01(p[1]/H,0.005,0.995))]); if(path.length<2) continue;
+      const wAvg=pts.reduce((a,p)=>a+p[2],0)/pts.length, o={type:'outline',path,seconds:r3(Math.max(0.35,Math.min(3,l.len/W*1.8))),press:r3(cl01(0.25+0.3*wAvg,0.25,1))};
+      if(ink!==undefined) o.ink=ink; g.push(o); } }
+  while(g.length&&g[g.length-1].type==='wait') g.pop();
+  const names=[...new Set(used)].map(p=>LIB.paintings[p]).filter(Boolean).map(pt=>[pt.title,pt.artist].filter(Boolean).join(', '));
+  return {gestures:g.slice(0,14),note:names.length?'borrowed from: '+names.join('; '):'left as it was'}; }
 // the other role: lay down ink for someone else to read. Leaf-like sweeps near what is there, or anywhere on a blank sheet.
 LOCAL.splasher={label:'Splasher (pours for you to read)', async turn(ctx){ await sleep(600);
   const m=ctx.paper, rd=Math.random, g=[]; let cx=0.5, cy=0.5, M=0;
@@ -781,6 +845,8 @@ LOCAL.splasher={label:'Splasher (pours for you to read)', async turn(ctx){ await
   if(rd()<0.35) g.push({type:'tilt',dx:r3(rd()*2-1),dy:r3(rd()*2-1),seconds:r3(0.8+rd())});
   return {gestures:g}; }};
 for(const [k,p] of Object.entries(LOCAL)) if(!window.InkPartners[k]) window.InkPartners[k]=p;
+(async()=>{ try{ const r=await fetch(P.get('lobes')||'../../data/lobes-v1.json',{cache:'no-cache'}); if(r.ok&&setLibrary(await r.json(),'repository')) return; }catch(e){}
+  try{ const t=lsGet('splashed-ink:lobes'); if(t) setLibrary(JSON.parse(t),'imported'); }catch(e){} })();
 function snapshotImage(){ const W=480, H=Math.round(480*cv.height/cv.width), c=document.createElement('canvas'); c.width=W; c.height=H; c.getContext('2d').drawImage(cv,0,0,W,H);
   const cols=20, rows=Math.max(10,Math.round(20*H/W)), g=document.createElement('canvas'); g.width=cols; g.height=rows; const gx=g.getContext('2d'); gx.imageSmoothingQuality='high'; gx.drawImage(c,0,0,cols,rows);
   const d=gx.getImageData(0,0,cols,rows).data, lines=[];
@@ -848,18 +914,18 @@ async function passPaper(again){
   if(again) emit('rd',{});
   const strokes=S.sees==='paper+strokes'?strokesSummary(lastPartnerTick):null;
   emit('pa',{partner:activeName,words:words||undefined,sees:S.sees}); $('words').value=''; render();
-  let gestures=[], prompt='';
+  let gestures=[], prompt='', note;
   try{
     const snap=await snapshotImage(), ctx={grid:snap.grid,cols:snap.cols,rows:snap.rows,imageBlob:snap.blob,aspect:cv.width/cv.height,ink:E.Cai,words,strokes,settings:S,history:aiHistory.slice(),role:partnerRole(S.roles),paper:paperMaps()};
     ctx.wetGrid=coarse(ctx.paper.wet,ctx.paper.cols,ctx.paper.rows,snap.cols,snap.rows); ctx.prompt=buildPrompt(ctx); prompt=ctx.prompt;
-    const res=await partner.turn(ctx); gestures=sanitize(res,ctx.role); }
+    const res=await partner.turn(ctx); gestures=sanitize(res,ctx.role); if(res&&typeof res.note==='string') note=res.note.slice(0,600); }
   catch(e){ const code=(e&&e.code)||'error';
     if(['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed'].includes(code)){ showHint('Your partner is not available in this view, so the paper stays with you.',6000); }
     else if(code==='rate_limited') showHint('Your partner needs a moment before the next turn. Try again later.',6000);
     else if(code!=='cancelled') showHint('Your partner could not take the paper this time. You can pass it again.',5000);
     emit('pe',{code}); setPass('idle'); refreshHud(); return; }
   if(!gestures.length){ emit('pe',{code:'no_gestures'}); setPass('idle'); refreshHud(); showHint('Your partner passed without painting.',4000); return; }
-  emit('pr',{partner:activeName,prompt});
+  emit('pr',{partner:activeName,prompt:activeName==='claude'?prompt:'',note});
   E.onPartnerDone=()=>{ lastPartnerTick=E.tick; setPass('idle'); againOK=E.settings.redo==='redo'; refreshHud(); if(session) saveSession(); };
   aiHistory.push({turn:aiHistory.length+1,gestures}); setPass('painting'); emit('pg',{gestures}); }
 $('pass').addEventListener('click',()=>passPaper(false));
@@ -901,6 +967,7 @@ function fmtDur(s){ s=Math.round(s); return `${Math.floor(s/60)}:${String(s%60).
 function renderSessions(){
   $('sessLede').textContent=session&&!session.endedAt?`This session has run for ${fmtDur(E.tick/60)}. ${keepRecord?'It is being kept on this device.':'It is not being kept.'}`:'No session is running.';
   $('sessKeep').setAttribute('aria-checked',String(keepRecord)); $('sessKeep').textContent=keepRecord?'Keeping a record on this device':'Not keeping a record';
+  $('libInfo').textContent=LIB?`Reader library: ${LIB.lobes.length} lobes from ${LIB.paintings.length} paintings (${LIB.from}).`:'The Reader has no library yet, so it outlines by simple rules. Build one in Machine Copy.';
   const ul=$('sessList'); ul.innerHTML=''; const idx=readIndex();
   if(!idx.length){ const li=document.createElement('li'); li.innerHTML='<span class="meta">Nothing saved yet.</span>'; ul.appendChild(li); }
   for(const it of idx){ const li=document.createElement('li'); const d=new Date(it.startedAt), sm=it.summary||{};
@@ -917,6 +984,10 @@ addEventListener('keydown',e=>{ if(e.key==='Escape') closePanels(); });
 $('sessKeep').addEventListener('click',()=>{ keepRecord=!keepRecord; if(keepRecord&&session) saveSession(); renderSessions(); refreshHud(); });
 $('sessExport').addEventListener('click',async()=>{ if(!session) return; const s=session.endedAt?session:(()=>{ const c={...session,endTick:E.tick,summary:computeSummaryLive(session)}; return c; })(); report(await saveFile(`splashed-ink-${s.id}.json`,serialize(s))); });
 $('sessEnd').addEventListener('click',()=>endAndShow());
+$('libImport').addEventListener('change',async e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; e.target.value='';
+  try{ const t=await f.text(), j=JSON.parse(t); if(!setLibrary(j,'imported')) throw new Error('format'); const kept=lsSet('splashed-ink:lobes',t);
+    showHint(`The Reader now learns from ${LIB.paintings.length} paintings (${LIB.lobes.length} lobes).${kept?'':' It is too large to keep in this browser, so load it again next time.'}`,6000); renderSessions(); }
+  catch(err){ showHint('That file is not a lobe library from Machine Copy.',4000); } });
 $('sessImport').addEventListener('change',async e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; e.target.value='';
   try{ const s=JSON.parse(await f.text()); if(!s||typeof s.format!=='string'||!s.format.startsWith('splashed-ink-session/')||!Array.isArray(s.events)) throw new Error('format');
     if(!s.summary) { s.endTick=s.endTick||(s.events.length?s.events[s.events.length-1].t:0); s.summary=computeSummary(s); } keepRecord=true; saveSession(s); renderSessions(); startReplay(s); }
@@ -986,7 +1057,7 @@ window.__si={ get E(){return E;}, get session(){return session;}, get mode(){ret
   pd(id,x,y,p){ emit('pd',{i:id,x:r4(x),y:r4(y),p:p||0.5}); }, pm(id,x,y,p){ emit('pm',{i:id,x:r4(x),y:r4(y),p:p||0.5}); }, pu(id){ emit('pu',{i:id}); },
   g(x,y){ emit('g',{x:r3(x),y:r3(y)}); }, tool(v){ emit('tl',{v}); }, knob(k,v){ emit('k',{k,v}); }, undo(){ emit('un',{}); }, sheet(s){ emit('sh',{s}); }, pot(c){ emit('pot',{c}); },
   pass(gestures,words){ emit('pa',{partner:'test',words:words||undefined,sees:E.settings.sees}); emit('pg',{gestures}); }, redo(){ emit('rd',{}); },
-  finish(){ return finishSession(); }, draw(){ render(); }, paper(){ const m=paperMaps(); return {cols:m.cols,rows:m.rows,tone:Array.from(m.tone),wet:Array.from(m.wet)}; }, partner(name,ctx){ return window.InkPartners[name].turn(ctx); }, snapDepth(){ return snapStack.length; },
+  finish(){ return finishSession(); }, draw(){ render(); }, paper(){ const m=paperMaps(); return {cols:m.cols,rows:m.rows,tone:Array.from(m.tone),wet:Array.from(m.wet)}; }, partner(name,ctx){ return window.InkPartners[name].turn(ctx); }, setLibrary(j){ return setLibrary(j,'test'); }, get LIB(){ return LIB; }, snapDepth(){ return snapStack.length; },
   replayHeadless(s){ if(mode==='live') running=false; const [sw,sh]=s.device.sim; initSim(sw,sh,s.paperSeed); resetEngine(s.seed,sanitizeSettings({roles:'free',...s.settings})); let i=0; const ev=s.events,end=s.endTick;
     for(;;){ while(i<ev.length&&ev[i].t<=E.tick) applyEvent(ev[i++]); if(i>=ev.length&&E.tick>=end) break; engineTick(); } render(); return E.tick; } };
 })();

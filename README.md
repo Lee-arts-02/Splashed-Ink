@@ -62,7 +62,7 @@ The *Session* panel lists saved sessions, ends and summarises the current one (s
 Recording can be turned off. [Format in docs/DATA_FORMAT.md.](docs/DATA_FORMAT.md)
 
 **Partners.** Five simple partners are built in and need no backend. They are rules, not AI, and are labelled that way:
-*Reader* outlines what you splashed: it finds the lobes in your ink and draws part of an edge, a vein, a stalk; *Splasher* pours for you to read;
+*Reader* outlines what you splashed: it finds the lobes in your ink and, given a lobe library, borrows how painters outlined the most similar lobes (without one it falls back on simple rules: part of an edge, a vein, a stalk); *Splasher* pours for you to read;
 *Chance* answers at random and reads nothing; *Counterweight* reads the paper and paints on the opposite side, then tilts toward the ink;
 *Echo* mirrors your last stroke, but only when "What your partner sees" lets it see how you drew. Inside claude.ai, Claude appears first in the list.
 To add your own with a few lines of JavaScript (a model that continues strokes, a mirror of the person's habits), see [docs/PARTNER_API.md](docs/PARTNER_API.md).
@@ -84,6 +84,15 @@ Load a painting (a public-domain work from a museum's open-access collection is 
 5. The middle panel shows what it found. **Export** writes it as data, ready for sequence models. [Format in docs/DATA_FORMAT.md.](docs/DATA_FORMAT.md)
 
 The *Detail* menu trades speed for resolution (Fast, Standard, Fine).
+
+**Learning from many paintings.** Below the copy, *Learn from many paintings* reads paintings without painting them and records
+how each painter answered a blot of ink: every lobe of wash, put in its own frame (along its long axis, from the fuller end), with
+the lines drawn in and around it. *Fetch public-domain paintings from The Met* looks up xieyi painters (Bada Shanren, Xu Wei, Shitao,
+Chen Chun and others) in The Met's Open Access collection, keeps only works marked public domain, and reads their album leaves in your
+browser. *Add your own images* does the same for files. *Export library* writes `lobes-v1.json`. Load it in Splashed Ink
+(Session, *Load a lobe library*) or put it at `data/lobes-v1.json` in the repository, and the Reader partner outlines your ink by
+finding the most similar lobes and borrowing how they were drawn, instead of following rules. Only shapes, line positions and each
+painting's title, artist and source are kept; no image is stored.
 [How the simulator and the brushes work: docs/INK_MODEL.md.](docs/INK_MODEL.md)
 
 ## Data
@@ -92,8 +101,9 @@ The *Detail* menu trades speed for resolution (Fast, Standard, Fine).
 |---|---|---|---|
 | Plan v2 (a painting taken apart) | written by Machine Copy | [`plan-v2.schema.json`](docs/schema/plan-v2.schema.json) | [`examples/plan-example.json`](examples/plan-example.json) |
 | Session v1 (a recorded sitting) | written by Splashed Ink | [`session-v1.schema.json`](docs/schema/session-v1.schema.json) | [`examples/session-example.json`](examples/session-example.json) |
+| Lobe library v1 (how painters outline blots) | written by Machine Copy, read by Splashed Ink's Reader | [`lobes-v1.schema.json`](docs/schema/lobes-v1.schema.json) | [`examples/lobes-example.json`](examples/lobes-example.json) |
 
-Both examples are synthetic. No painting is included in this repository. Check any file with `python tools/validate.py file.json`.
+The examples are synthetic. No painting is included in this repository. Check any file with `python tools/validate.py file.json`.
 
 ## Checking that it works
 
@@ -132,7 +142,8 @@ run `python tests/run_checks.py --splashed` and `--machine-copy` separately if y
 
 * Pull the ink simulation into one small shared library; the two apps currently carry slightly different copies of the step function.
 * Add momentum to the simulation so ink can be thrown and rush ahead of a stroke. Splashed Ink would gain the most.
-* A Reader that learns from paintings: Machine Copy records where painters put lines relative to each lobe of wash (along which edge, how far along the axis), and the partner retrieves the most similar lobes and borrows how they were outlined (nearest neighbours first, a sequence model later).
+* A first public library built from The Met's public-domain xieyi paintings, shipped at `data/lobes-v1.json`.
+* Lines in the library come out of Machine Copy in fragments (its centre lines break at junctions). Joining them would let the Reader borrow whole gestures. After that, a sequence model conditioned on the lobe instead of nearest neighbours.
 * Comparison partners: a mirror that repeats the person's own habits.
 * A Chinese-language interface.
 

@@ -139,6 +139,14 @@ ROLES = """
     for (let i = 1; i <= 30; i++) { si.step(1); si.pm('s', 0.2 + i * 0.02, 0.5, 0.5); } si.pu('s'); si.step(120); return si.density().filter(v => v > 38).length; };
   out.brushArea = area('brush'); out.lineArea = area('line'); return out; }
 """
+READER_LIB = """
+() => new Promise(async res => { const si = window.__si, sleep = ms => new Promise(r => setTimeout(r, ms));
+  si.setLibrary({format:'splashed-ink-lobes/v1', paintings:[{title:'Test painting', artist:'Nobody'}],
+    lobes:[{p:0, f:new Array(19).fill(0), lines:[[[-0.8,0,0.2],[0,0,0.2],[0.8,0,0.2]]]}]});
+  si.start(); si.pd('a', 0.3, 0.5, 0.6); for (let i = 1; i <= 40; i++) { si.step(2); si.pm('a', 0.3 + i * 0.01, 0.5, 0.6); } si.pu('a'); si.step(400);
+  const ctx = {paper: si.paper(), settings: si.E.settings, role: 'outline'}, r = await si.partner('reader', ctx);
+  res({label: document.getElementById('partnerSel').selectedOptions[0].text, note: r.note, gestures: r.gestures}); })
+"""
 SPEC_PAINT = """
 () => { const c = document.createElement('canvas'); c.width = 300; c.height = 400; const x = c.getContext('2d');
   x.fillStyle = '#e6dcc4'; x.fillRect(0, 0, 300, 400); x.fillStyle = '#25262a'; x.beginPath(); x.ellipse(150, 170, 90, 50, 0.3, 0, 7); x.fill();
@@ -231,6 +239,14 @@ with sync_playwright() as pw:
         r = rp.evaluate(BUILTIN, "splasher"); g = r["gestures"] or []
         check("Splasher pours and never outlines", r["finished"] and g and not any(x["type"] == "outline" for x in g) and r["options"][0] == "splasher", json.dumps(g)[:120])
         rp.close()
+        rp2 = browser.new_page(viewport={"width": 300, "height": 300}); rp2.set_default_timeout(200000); rp2.goto(SI); rp2.wait_for_timeout(600)
+        r = rp2.evaluate(READER_LIB); g = [x for x in r["gestures"] if x["type"] == "outline"]
+        ok = bool(g) and "Test painting" in r["note"] and "learned from 1" in r["label"]
+        if ok:
+            p0, p1 = g[0]["path"][0], g[0]["path"][-1]
+            ok = abs(p1[0] - p0[0]) > 2.5 * abs(p1[1] - p0[1]) and 0.3 < (p0[0] + p1[0]) / 2 < 0.75 and abs((p0[1] + p1[1]) / 2 - 0.5) < 0.08
+        check("Reader borrows a painter's line into your blot's frame", ok, json.dumps(r)[:200])
+        rp2.close()
 
     if RUN_MC:
         # --- 6. Machine Copy
@@ -264,10 +280,18 @@ with sync_playwright() as pw:
         after = mc.evaluate("window.__mc.lastScore")["toneError"]
         check("Refine tone does not make the tone worse", after <= before + 0.01, f"{before:.3f} -> {after:.3f}")
         data = mc.evaluate("window.__mc.exportJson()")
+        mc.evaluate("(b64)=>window.__mc.libAdd('data:image/png;base64,'+b64,{title:'synthetic',source:'test',license:'CC0'})", base64.b64encode(png).decode())
+        libtxt = mc.evaluate("window.__mc.libraryJson()"); tmp3 = Path(tempfile.mkdtemp()) / "lobes.json"; tmp3.write_text(libtxt)
+        lj = json.loads(libtxt); issues = validate.check(tmp3)
+        check("Machine Copy builds a lobe library that passes its schema", not issues and len(lj["lobes"]) > 0 and lj["paintings"][0]["title"] == "synthetic", "; ".join(issues[:2]) or f"{len(lj['lobes'])} lobes")
         tmp2 = Path(tempfile.mkdtemp()) / "plan.json"; tmp2.write_text(data)
         issues = validate.check(tmp2)
         check("the exported plan passes the schema", not issues, "; ".join(issues[:2]))
     browser.close()
+
+# --- the shared lobe code must be the same in both apps
+kit = lambda f: (lambda t: t[t.index("// ==== LobeKit begin"):t.index("// ==== LobeKit end ====")])((ROOT / f).read_text())
+check("both apps describe lobes with the same code", kit("apps/machine-copy/index.html") == kit("apps/splashed-ink/index.html"))
 
 # --- 7. shipped examples
 for f in sorted((ROOT / "examples").glob("*.json")):

@@ -1,14 +1,15 @@
 # Data formats
 
-Two JSON formats, both versioned by a `format` field and described by a JSON Schema in [`schema/`](schema/).
+Three JSON formats, each versioned by a `format` field and described by a JSON Schema in [`schema/`](schema/).
 Check a file with `python tools/validate.py yourfile.json`. Small synthetic examples are in [`../examples/`](../examples/).
 
 | Format | Written by | What it holds |
 |---|---|---|
 | `splashed-ink-plan/v2` | Machine Copy | A painting taken apart into wash strokes, pours and lines, in painting order |
 | `splashed-ink-session/v1` | Splashed Ink | Everything a person and a partner did on one sheet, tick by tick |
+| `splashed-ink-lobes/v1` | Machine Copy (*Learn from many paintings*) | How painters outlined blots: lobes of wash and the lines around each, in the lobe's own frame |
 
-Both use the same coordinate conventions. x runs left to right and y top to bottom, both as fractions of the sheet (0 to 1).
+Plans and sessions use the same coordinate conventions. x runs left to right and y top to bottom, both as fractions of the sheet (0 to 1).
 Sizes (radius, width, path length) are fractions of the sheet's **short side**, so a file means the same thing on any screen.
 
 ---
@@ -166,6 +167,39 @@ It is a convenience, not a substitute for analysing the events.
 
 A session contains how someone drew, when they paused, and any words they sent a partner. Sessions stay in the browser's local
 storage unless the person exports them. The Session panel's switch turns local saving off. `pr` events store the full text sent
-to a partner; delete them from a file if that matters for your use.
+to a language-model partner (and a short `note` from built-in partners, such as which paintings the Reader borrowed from); delete them from a file if that matters for your use.
 If you collect sessions from participants, get consent and whatever approval your institution requires. This repository
 does not do that for you.
+
+---
+
+## 3. Lobe library v1 (`splashed-ink-lobes/v1`)
+
+Built by Machine Copy from many paintings, without painting them. Each painting's ink map is taken apart as for a copy
+(washes and lines), the washes are cut into lobes ([how](INK_MODEL.md#washes-as-lobes-machine-copy)), and every line is split into
+runs by the lobe it lies nearest to, within 1.2 half-widths plus 2 cells of that lobe's edge. Runs shorter than 3 cells are dropped.
+
+```json
+{ "format": "splashed-ink-lobes/v1",
+  "paintings": [ { "title": "...", "artist": "Bada Shanren (Zhu Da)", "date": "...", "source": "The Metropolitan Museum of Art",
+                   "url": "https://www.metmuseum.org/art/collection/search/...", "image": "...", "license": "CC0 (The Met Open Access)",
+                   "aspect": 0.71, "lobes": 31, "lines": 140 } ],
+  "lobes": [ { "p": 0, "f": [19 numbers], "lines": [ [[u, v, width], ...], ... ] } ] }
+```
+
+**The lobe frame.** The origin is the middle of the lobe's long axis (its principal direction). `u` runs along that axis, from -1 at
+the fuller end to 1 at the thinner end, in half-lengths. `v` runs across it, in half-widths, positive toward the side with more ink.
+`width` is the line's width in half-widths. Because both apps put a lobe in this frame the same way, a line stored here can be drawn
+into any other lobe: stretched to its length and width, turned to its direction.
+
+**Features** `f`, used to find similar lobes: the log of elongation (half-length over half-width), the lobe's width above and below
+its axis at 8 places along it (in half-lengths), its mean tone (0 to 1), and the log of its half-length relative to the sheet's short side.
+The Reader compares lobes by a weighted distance over these (elongation 1.6, profile 1 each, tone 0.8, size 0.5).
+
+**Empty `lines`** means the painter left that lobe without lines. That is information too: the Reader sometimes leaves a lobe alone when
+its nearest match was left alone.
+
+**Rights.** The library holds no images, only shapes and line positions, but each painting is listed with its source and licence.
+Libraries built with *Fetch public-domain paintings from The Met* use only works The Met marks public domain (CC0). For anything
+added from your own files, `license` says it is unknown: check before sharing such a library.
+

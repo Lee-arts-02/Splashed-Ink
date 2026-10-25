@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lee-arts-02.github.io/Splashed-Ink/docs/schema/lobes-v1.schema.json",
+  "title": "Splashed Ink lobe library v1",
+  "description": "How painters answered blots of ink: for each lobe of wash found in a painting, its shape features and the lines drawn around it, in the lobe's own frame. Built by Machine Copy, read by Splashed Ink's Reader partner.",
+  "type": "object",
+  "required": [
+    "format",
+    "paintings",
+    "lobes"
+  ],
+  "properties": {
+    "format": {
+      "const": "splashed-ink-lobes/v1"
+    },
+    "created": {
+      "type": "string"
+    },
+    "analysis": {
+      "type": "object",
+      "description": "The Machine Copy settings the library was built with."
+    },
+    "featureNames": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "lineColumns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "paintings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "artist": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "description": "The work's page at its source."
+          },
+          "image": {
+            "type": "string",
+            "description": "The image that was read."
+          },
+          "license": {
+            "type": "string",
+            "description": "The licence of the image that was read. Only share a library whose images you may use."
+          },
+          "aspect": {
+            "type": "number"
+          },
+          "lobes": {
+            "type": "integer"
+          },
+          "lines": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "lobes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "p",
+          "f",
+          "lines"
+        ],
+        "properties": {
+          "p": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Index into paintings."
+          },
+          "f": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 19,
+            "maxItems": 19,
+            "description": "log elongation, 8 widths above and 8 below the long axis (in half-lengths), mean tone, log size relative to the short side."
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              }
+            },
+            "description": "Each line is a list of [u, v, width] points: u along the long axis (-1 fuller end, 1 thinner end), v across it in half-widths (positive toward the heavier side), width in half-widths. An empty list means the painter left the lobe without lines."
+          }
+        }
+      }
+    }
+  }
+}
