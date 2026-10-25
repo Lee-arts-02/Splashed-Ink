@@ -1,6 +1,7 @@
 name: Build lobe library
 # Downloads public-domain (CC0) ink paintings from the Cleveland Museum of Art and The Met, reads them with Machine Copy
-# in a headless browser, and uploads data/lobes-v1.json as an artifact. Images are never committed.
+# in a headless browser, and puts data/lobes-v1.json on the branch `library-build` (and as an artifact) for review before it goes
+# to main. Images are never committed.
 on:
   workflow_dispatch:
     inputs:
@@ -11,7 +12,7 @@ on:
     branches: [main]
     paths: ["tools/build_library.py", ".github/workflows/build-library.yml"]
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,3 +30,11 @@ jobs:
           path: |
             data/lobes-v1.json
             data/lobes-v1-sources.md
+      - name: Put the library on the library-build branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B library-build
+          git add -f data/lobes-v1.json data/lobes-v1-sources.md
+          git commit -m "Lobe library built by run ${{ github.run_id }}"
+          git push -f origin library-build

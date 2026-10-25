@@ -90,7 +90,10 @@ how each painter answered a blot of ink: every lobe of wash, put in its own fram
 the lines drawn in and around it. *Fetch public-domain paintings* looks up xieyi painters (Bada Shanren, Xu Wei, Shitao, Chen Chun,
 Huang Shen, Xugu and others) in the open-access (CC0) collections of the Cleveland Museum of Art and The Met, keeps only ink paintings
 marked public domain, and reads them in your browser. If nothing arrives, the status line counts each step (search, records, filter,
-images) so you can see where it stopped. *Add your own images* does the same for files. *Export library* writes `lobes-v1.json`. Load it in Splashed Ink
+images) so you can see where it stopped. Museums' image servers usually refuse to let another web page read
+their pixels, so the reliable way is the repository's **Build lobe library** workflow (`tools/build_library.py`): it downloads the
+same CC0 paintings on GitHub's servers, reads each with Machine Copy in a headless browser, and uploads `data/lobes-v1.json` with a list
+of every painting it used (`data/lobes-v1-sources.md`). Run it from the Actions tab. *Add your own images* does the same for files. *Export library* writes `lobes-v1.json`. Load it in Splashed Ink
 (Session, *Load a lobe library*) or put it at `data/lobes-v1.json` in the repository, and the Reader partner outlines your ink by
 finding the most similar lobes and borrowing how they were drawn, instead of following rules. Only shapes, line positions and each
 painting's title, artist and source are kept; no image is stored.
