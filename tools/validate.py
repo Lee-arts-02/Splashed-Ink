@@ -20,6 +20,8 @@ SCHEMAS = {
     "splashed-ink-plan/v2": ROOT / "docs/schema/plan-v2.schema.json",
     "splashed-ink-session/v1": ROOT / "docs/schema/session-v1.schema.json",
     "splashed-ink-lobes/v1": ROOT / "docs/schema/lobes-v1.schema.json",
+    "splashed-ink-motifs/v1": ROOT / "docs/schema/motifs-v1.schema.json",
+    "splashed-ink-motif-annotations/v1": ROOT / "docs/schema/motif-annotations-v1.schema.json",
 }
 
 def session_checks(doc):

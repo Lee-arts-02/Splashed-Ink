@@ -1,0 +1,462 @@
+{
+ "format": "splashed-ink-motif-annotations/v1",
+ "note": "Motifs boxed by hand in the works of data/curated.json. Boxes are fractions of each work's image (x0, y0, x1, y1). A motif is one thing a painter made out of ink: a fish, a swallow, a rock. Left out: Muqi's Dragon and Tiger (the silk is too dark to read the ink), Bodhidharma (line only), Chen Chun and Li Shan (too dense to separate one motif), Shitao's two Qinhuai leaves (line-led landscapes). Also left out after checking the crops: Huang Shen's trunk and Sotatsu's trunk (the boxes could not isolate them).",
+ "motifs": [
+  {
+   "accession": "1981.34",
+   "label": "swallow",
+   "zh": "燕",
+   "box": [
+    0.42,
+    0.185,
+    0.78,
+    0.3
+   ],
+   "note": "a swallow: dark wash body and wings, a few strokes for tail and wing tips"
+  },
+  {
+   "accession": "1981.34",
+   "label": "lotus flower",
+   "zh": "荷花",
+   "box": [
+    0.12,
+    0.48,
+    0.49,
+    0.66
+   ],
+   "note": "petals outlined over pale wash"
+  },
+  {
+   "accession": "1981.34",
+   "label": "lotus leaf",
+   "zh": "荷叶",
+   "box": [
+    0.0,
+    0.79,
+    0.83,
+    0.985
+   ],
+   "note": "one broad wash, veins radiating from a dark centre"
+  },
+  {
+   "accession": "1981.34",
+   "label": "reeds",
+   "zh": "芦草",
+   "box": [
+    0.0,
+    0.38,
+    0.17,
+    0.51
+   ],
+   "note": "blade strokes"
+  },
+  {
+   "accession": "1982.53",
+   "label": "myna",
+   "zh": "八哥",
+   "box": [
+    0.19,
+    0.29,
+    0.56,
+    0.53
+   ],
+   "note": "the bird is one dark wash; eye, beak and claws are a few dark marks"
+  },
+  {
+   "accession": "1982.53",
+   "label": "branch",
+   "zh": "枝",
+   "box": [
+    0.38,
+    0.47,
+    0.88,
+    0.8
+   ],
+   "note": "a long dry stroke with a tuft of leaves"
+  },
+  {
+   "accession": "1984.42",
+   "label": "geese in flight",
+   "zh": "飞雁",
+   "box": [
+    0.67,
+    0.495,
+    0.95,
+    0.575
+   ],
+   "note": "small washes with wing strokes"
+  },
+  {
+   "accession": "1984.42",
+   "label": "rock and reeds",
+   "zh": "石与芦",
+   "box": [
+    0.0,
+    0.67,
+    0.62,
+    0.985
+   ],
+   "note": "a splashed rock, dots for moss, reed blades over it"
+  },
+  {
+   "accession": "1977.31",
+   "label": "eagle",
+   "zh": "鹰",
+   "box": [
+    0.33,
+    0.285,
+    0.96,
+    0.43
+   ],
+   "note": "wing washes, the head and talons in line"
+  },
+  {
+   "accession": "1999.6",
+   "label": "loquat leaves",
+   "zh": "枇杷叶",
+   "box": [
+    0.3,
+    0.29,
+    0.76,
+    0.48
+   ],
+   "note": "broad wash leaves with dark veins"
+  },
+  {
+   "accession": "1999.6",
+   "label": "loquat leaves",
+   "zh": "枇杷叶",
+   "box": [
+    0.4,
+    0.52,
+    0.86,
+    0.64
+   ],
+   "note": "broad wash leaves with dark veins"
+  },
+  {
+   "accession": "1997.101",
+   "label": "leafy sprig",
+   "zh": "海棠叶枝",
+   "box": [
+    0.37,
+    0.44,
+    0.61,
+    0.63
+   ],
+   "note": "small wash leaves with veins on a thin twig"
+  },
+  {
+   "accession": "1974.26",
+   "label": "plum trunk",
+   "zh": "梅干",
+   "box": [
+    0.38,
+    0.33,
+    0.97,
+    0.95
+   ],
+   "note": "a broad wet trunk; blossoms and twigs in fine line"
+  },
+  {
+   "accession": "1955.43",
+   "label": "splashed island",
+   "zh": "破墨岛",
+   "box": [
+    0.14,
+    0.5,
+    0.82,
+    0.93
+   ],
+   "note": "a flung wash with a few dark accents for trees and roofs"
+  },
+  {
+   "accession": "1976.59",
+   "label": "flung-ink rock",
+   "zh": "破墨山石",
+   "box": [
+    0.18,
+    0.53,
+    0.82,
+    0.93
+   ],
+   "note": "a mass of wash, dark strokes for trees and a boat"
+  },
+  {
+   "accession": "2015.466",
+   "label": "mountain peak",
+   "zh": "峰",
+   "box": [
+    0.38,
+    0.07,
+    0.78,
+    0.48
+   ],
+   "note": "a wash peak with dark accents"
+  },
+  {
+   "accession": "1970.71.1",
+   "label": "puppy",
+   "zh": "小狗",
+   "box": [
+    0.53,
+    0.61,
+    0.74,
+    0.8
+   ],
+   "note": "dark patches for ears and back, an outline for the rest"
+  },
+  {
+   "accession": "1970.71.1",
+   "label": "puppy",
+   "zh": "小狗",
+   "box": [
+    0.29,
+    0.71,
+    0.46,
+    0.83
+   ],
+   "note": "dark patches and outline"
+  },
+  {
+   "accession": "1970.71.2",
+   "label": "puppy",
+   "zh": "小狗",
+   "box": [
+    0.6,
+    0.7,
+    0.79,
+    0.85
+   ],
+   "note": "dark patches and outline"
+  },
+  {
+   "accession": "1970.71.2",
+   "label": "curled puppy",
+   "zh": "蜷狗",
+   "box": [
+    0.61,
+    0.81,
+    0.89,
+    0.94
+   ],
+   "note": "one black wash for the back, a curve for the belly"
+  },
+  {
+   "accession": "2015.509",
+   "label": "egret",
+   "zh": "白鹭",
+   "box": [
+    0.24,
+    0.52,
+    0.81,
+    0.93
+   ],
+   "note": "wing washes, a line neck and long line legs"
+  },
+  {
+   "accession": "2015.509",
+   "label": "grassy ground",
+   "zh": "草地",
+   "box": [
+    0.07,
+    0.84,
+    0.56,
+    0.96
+   ],
+   "note": "dark blots with grass strokes"
+  },
+  {
+   "accession": "1953.247",
+   "label": "fish",
+   "zh": "鱼",
+   "box": [
+    0.448,
+    0.62,
+    0.5,
+    0.88
+   ],
+   "note": "a small fish: a dark back, an eye, a few fin strokes"
+  },
+  {
+   "accession": "1953.247",
+   "label": "fish",
+   "zh": "鱼",
+   "box": [
+    0.5,
+    0.62,
+    0.535,
+    0.82
+   ],
+   "note": "a small fish"
+  },
+  {
+   "accession": "1953.247",
+   "label": "lotus leaves over rocks",
+   "zh": "荷叶石丛",
+   "box": [
+    0.26,
+    0.04,
+    0.47,
+    0.99
+   ],
+   "note": "overlapping wet washes with dark accents"
+  },
+  {
+   "accession": "1953.247",
+   "label": "outlined rock",
+   "zh": "勾勒石",
+   "box": [
+    0.525,
+    0.12,
+    0.665,
+    0.94
+   ],
+   "note": "the outline of a rock in one dry line, dark wash in its hollows"
+  },
+  {
+   "accession": "1953.247",
+   "label": "outlined rock",
+   "zh": "勾勒石",
+   "box": [
+    0.75,
+    0.05,
+    0.89,
+    0.76
+   ],
+   "note": "a rock outlined, wash in the folds"
+  },
+  {
+   "accession": "1955.37.8",
+   "label": "Mi-style peak",
+   "zh": "米点峰",
+   "box": [
+    0.37,
+    0.26,
+    0.57,
+    0.49
+   ],
+   "note": "a dark wet peak built of soft dots"
+  },
+  {
+   "accession": "1955.37.8",
+   "label": "trees on a bank",
+   "zh": "树丛",
+   "box": [
+    0.38,
+    0.62,
+    0.69,
+    0.79
+   ],
+   "note": "clumps of wet dots over a line of bank"
+  },
+  {
+   "accession": "1967.36",
+   "label": "lily",
+   "zh": "百合",
+   "box": [
+    0.52,
+    0.2,
+    0.88,
+    0.97
+   ],
+   "note": "petals in fine line, leaves in small washes"
+  },
+  {
+   "accession": "1952.589",
+   "label": "orchid",
+   "zh": "兰",
+   "box": [
+    0.19,
+    0.0,
+    0.25,
+    1.0
+   ],
+   "note": "long blade strokes and flower dots"
+  },
+  {
+   "accession": "1952.589",
+   "label": "bamboo",
+   "zh": "竹",
+   "box": [
+    0.41,
+    0.25,
+    0.5,
+    1.0
+   ],
+   "note": "leaf strokes, each one press of the brush"
+  },
+  {
+   "accession": "1952.589",
+   "label": "rock",
+   "zh": "石",
+   "box": [
+    0.6,
+    0.08,
+    0.675,
+    0.97
+   ],
+   "note": "a rock in dry outline with dark dots"
+  },
+  {
+   "accession": "1960.40",
+   "label": "cabbage",
+   "zh": "白菜",
+   "box": [
+    0.395,
+    0.06,
+    0.43,
+    0.65
+   ],
+   "note": "leaves in broad wash, veins in line"
+  },
+  {
+   "accession": "1960.40",
+   "label": "chrysanthemums",
+   "zh": "菊",
+   "box": [
+    0.665,
+    0.1,
+    0.75,
+    0.95
+   ],
+   "note": "flower heads in fine strokes, leaves in wash"
+  },
+  {
+   "accession": "1960.40",
+   "label": "rock",
+   "zh": "石",
+   "box": [
+    0.755,
+    0.35,
+    0.81,
+    0.97
+   ],
+   "note": "a wash rock with moss dots"
+  },
+  {
+   "accession": "1980.13",
+   "label": "peonies",
+   "zh": "牡丹",
+   "box": [
+    0.35,
+    0.04,
+    0.51,
+    0.97
+   ],
+   "note": "wash leaves and petals, dark veins"
+  },
+  {
+   "accession": "1980.13",
+   "label": "plum branch and bamboo",
+   "zh": "梅枝与竹",
+   "box": [
+    0.75,
+    0.05,
+    0.885,
+    0.97
+   ],
+   "note": "a branch with blossoms and dark bamboo leaves"
+  }
+ ]
+}
