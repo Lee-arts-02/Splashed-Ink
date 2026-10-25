@@ -62,7 +62,7 @@ The *Session* panel lists saved sessions, ends and summarises the current one (s
 Recording can be turned off. [Format in docs/DATA_FORMAT.md.](docs/DATA_FORMAT.md)
 
 **Partners.** Five simple partners are built in and need no backend. They are rules, not AI, and are labelled that way:
-*Reader* outlines what you splashed: it reads each blot as a motif traced by hand from the *Mustard Seed Garden Manual* and from public-domain paintings (a bird, Bada Shanren's fish and rock, Muqi's swallow and lotus leaf, an egret), sketches the first strokes in pale ink, and commits the reading in dark ink on its next turn; when the session ends it says what your ink was read as, and from which work; *Splasher* pours for you to read;
+*Reader* outlines what you splashed: it reads each blot as a motif traced by hand from the *Mustard Seed Garden Manual* and from public-domain paintings (birds, an ox, a deer, a rock, a leaf, a chrysanthemum, a scholar; Bada Shanren's fish and rock, Muqi's swallow and lotus leaf, an egret), sketches the first strokes in pale ink, and commits the reading in dark ink on its next turn; when the session ends it says what your ink was read as, and from which work; *Splasher* pours for you to read;
 *Chance* answers at random and reads nothing; *Counterweight* reads the paper and paints on the opposite side, then tilts toward the ink;
 *Echo* mirrors your last stroke, but only when "What your partner sees" lets it see how you drew. Inside claude.ai, Claude appears first in the list.
 To add your own with a few lines of JavaScript (a model that continues strokes, a mirror of the person's habits), see [docs/PARTNER_API.md](docs/PARTNER_API.md).

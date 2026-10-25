@@ -128,6 +128,18 @@
             "type": "integer",
             "minimum": 1,
             "description": "How many of the first lines make the pale first sketch."
+          },
+          "upright": {
+            "type": "boolean",
+            "description": "Keep the motif's own up: it is turned only by mirroring left to right, never rotated to the blot."
+          },
+          "angle": {
+            "type": "number",
+            "description": "For an upright motif, the direction of its long axis on the page, in radians (y down)."
+          },
+          "aspect": {
+            "type": "number",
+            "description": "For an upright motif, the width over height of its strokes."
           }
         }
       }

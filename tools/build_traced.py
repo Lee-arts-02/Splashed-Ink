@@ -30,7 +30,10 @@ def main():
                 pts.append([round((dx * eu[0] + dy * eu[1]) / Lh, 3), round((dx * ev[0] + dy * ev[1]) / hw, 3), round(s.get("w", 0.006 * L) / hw, 3)])
             lines.append(pts); parts.append(s["part"])
         el = math.log(Lh / hw); prof = [round(math.sqrt(max(0, 1 - ((k + 0.5) / 4 - 1) ** 2)) * hw / Lh, 3) for k in range(8)]
-        out.append({"label": t["label"], "zh": t["zh"], "note": t.get("pose", ""), "kind": "manual", "f": [round(el, 3)] + prof + prof + [0.5, -1.0],
+        allp = [P(x, y) for st in t["strokes"] for x, y in st["pts"]]
+        bw = max(q[0] for q in allp) - min(q[0] for q in allp); bh = max(q[1] for q in allp) - min(q[1] for q in allp)
+        extra = {"upright": True, "angle": round(math.atan2(eu[1], eu[0]), 4), "aspect": round(bw / max(1e-6, bh), 3)} if t.get("upright") else {}
+        out.append({**extra, "label": t["label"], "zh": t["zh"], "note": t.get("pose", ""), "kind": "manual", "f": [round(el, 3)] + prof + prof + [0.5, -1.0],
                     "blotShare": 0, "lines": lines, "parts": parts, "dots": [], "sketch": t.get("sketch", 3),
                     "painting": {"title": src["title"] + (f", page {t['page']}" if "page" in t else ""), "artist": src.get("artist", "Mustard Seed Garden Manual (Wang Gai and others)"), "url": src["url"], "license": src["license"],
                                  "why": "key strokes traced by hand, in drawing order"}})
