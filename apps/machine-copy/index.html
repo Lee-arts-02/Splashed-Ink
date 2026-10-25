@@ -89,7 +89,7 @@ summary{cursor:pointer;color:var(--ink)}
     <h2 id="libTitle">Learn from many paintings</h2>
     <p class="lede">Reads many paintings without painting them, and records how each painter answered a blot of ink: for every lobe of wash, where the lines around it go. Splashed Ink's Reader partner outlines your ink by finding the most similar lobes in this library and borrowing how they were drawn. Only the shapes and line positions are kept, with each painting's title, artist and source.</p>
     <div class="bar">
-      <button id="libMet" type="button">Fetch public-domain paintings from The Met</button>
+      <button id="libMet" type="button">Fetch public-domain paintings (Cleveland, The Met)</button>
       <label class="file">Add your own images<input id="libFiles" type="file" accept="image/*" multiple></label>
       <button id="libStop" type="button" disabled>Stop</button>
       <button id="libExport" type="button" disabled>Export library</button>
@@ -847,29 +847,42 @@ libEl.files.addEventListener('change',async e=>{ const fs=[...(e.target.files||[
   libBusy=false; libRefresh(); libEl.status.textContent=`The library has ${lib.lobes.length} lobes from ${lib.paintings.length} paintings.`; });
 // The Met's Open Access works are public domain (CC0). Painters of xieyi, the free, splashed manner, and their followers.
 const MET='https://collectionapi.metmuseum.org/public/collection/v1/';
-const MET_ARTISTS=(P.get('artists')||'Bada Shanren|Xu Wei|Shitao|Chen Chun|Li Shan|Li Fangying|Huang Shen|Gao Fenghan|Zhu Da|Xugu|Ren Yi|Wu Changshuo').split('|');
 const MET_PER=+P.get('per')||8;
+// Two open-access sources, both CC0: the Cleveland Museum of Art and The Met. Each step is counted, so if nothing arrives
+// the status says where it stopped (search, records, filter, or images refused by the museum's server).
+const CMA='https://openaccess-api.clevelandart.org/api/artworks/';
+async function* fromCleveland(name,diag){
+  let r; try{ r=await (await fetch(`${CMA}?q=${encodeURIComponent(name)}&cc0=1&has_image=1&type=Painting&limit=40&fields=id,title,creators,creation_date,technique,images,url`)).json(); diag.searchOk++; }
+  catch(e){ diag.searchFail++; return; }
+  const key=name.split(' ')[0];
+  for(const o of (r.data||[])){ diag.records++;
+    const who=(o.creators||[]).map(c=>c.description||'').join('; ');
+    if(!new RegExp(key,'i').test(who)||!/ink/i.test(o.technique||'')){ diag.filtered++; continue; }
+    const u=o.images&&o.images.web&&o.images.web.url; if(!u){ diag.noImage++; continue; }
+    yield {src:u, meta:{title:o.title,artist:who,date:o.creation_date,source:'Cleveland Museum of Art',url:o.url,image:u,license:'CC0 (CMA Open Access)'}}; } }
+async function* fromMet(name,diag){
+  let ids=[]; try{ const r=await (await fetch(`${MET}search?artistOrCulture=true&hasImages=true&q=${encodeURIComponent(name)}`)).json(); ids=(r.objectIDs||[]).slice(0,40); diag.searchOk++; }
+  catch(e){ diag.searchFail++; return; }
+  for(const id of ids){
+    let o; try{ o=await (await fetch(`${MET}objects/${id}`)).json(); diag.records++; }catch(e){ diag.recordFail++; continue; }
+    if(!o||!o.isPublicDomain||!/ink/i.test(o.medium||'')||!/paint|album|scroll/i.test((o.classification||'')+' '+(o.objectName||''))||!new RegExp(name.split(' ')[0],'i').test(o.artistDisplayName||'')){ diag.filtered++; continue; }
+    const imgs=[o.primaryImageSmall,...(o.additionalImages||[]).map(u=>u.replace('/original/','/web-large/'))].filter(Boolean).slice(0,12);
+    if(!imgs.length){ diag.noImage++; continue; }
+    for(let k=0;k<imgs.length;k++) yield {src:imgs[k], meta:{title:o.title+(imgs.length>1?` (image ${k+1})`:''),artist:o.artistDisplayName,date:o.objectDate,source:'The Metropolitan Museum of Art',url:o.objectURL,image:imgs[k],license:'CC0 (The Met Open Access)'}}; } }
+const ARTISTS=(P.get('artists')||'Bada Shanren|Xu Wei|Shitao|Chen Chun|Li Shan|Li Fangying|Huang Shen|Gao Fenghan|Gao Qipei|Xugu|Ren Yi|Wu Changshuo|Zhao Zhiqian|Shen Zhou|Zhu Da').split('|');
 libEl.met.addEventListener('click',async()=>{
-  libBusy=true; libHalt=false; libRefresh(); let ok=0, fail=0, seen=new Set(lib.paintings.map(p=>p.image));
-  try{
-    for(const name of MET_ARTISTS){ if(libHalt) break; libEl.status.textContent=`Looking up ${name} at The Met`;
-      let ids=[]; try{ const r=await (await fetch(`${MET}search?artistOrCulture=true&hasImages=true&q=${encodeURIComponent(name)}`)).json(); ids=(r.objectIDs||[]).slice(0,40); }
-      catch(e){ throw new Error('api'); }
-      let got=0;
-      for(const id of ids){ if(libHalt||got>=MET_PER) break;
-        let o; try{ o=await (await fetch(`${MET}objects/${id}`)).json(); }catch(e){ continue; }
-        if(!o||!o.isPublicDomain||!/ink/i.test(o.medium||'')||!/paint|album|scroll/i.test((o.classification||'')+' '+(o.objectName||''))) continue;
-        if(!new RegExp(name.split(' ')[0],'i').test(o.artistDisplayName||'')) continue;
-        const imgs=[o.primaryImageSmall,...(o.additionalImages||[]).map(u=>u.replace('/original/','/web-large/'))].filter(Boolean).slice(0,12);
-        for(let k=0;k<imgs.length&&!libHalt;k++){ const u=imgs[k]; if(seen.has(u)) continue; seen.add(u);
-          libEl.status.textContent=`Reading ${o.title} by ${o.artistDisplayName} (${k+1} of ${imgs.length})`;
-          try{ const im=await loadImg(u,true); libAdd(im,{title:o.title+(imgs.length>1?` (image ${k+1})`:''),artist:o.artistDisplayName,date:o.objectDate,source:'The Metropolitan Museum of Art',url:o.objectURL,image:u,license:'CC0 (The Met Open Access)'}); ok++; }
-          catch(e){ fail++; }
-          await pause(60); }
-        got++; } }
-    libEl.status.textContent=ok?`Read ${ok} images${fail?` (${fail} could not be loaded)`:''}. The library has ${lib.lobes.length} lobes from ${lib.paintings.length} paintings.`
-      :`No images could be read from The Met here${fail?`: its image server did not allow this page to read ${fail} images`:''}. Download images from metmuseum.org (filter by Open Access) and use Add your own images.`; }
-  catch(e){ libEl.status.textContent='The Met collection could not be reached from this page. Download images from metmuseum.org (filter by Open Access) and use Add your own images.'; }
+  libBusy=true; libHalt=false; libRefresh(); const seen=new Set(lib.paintings.map(p=>p.image)), D={};
+  for(const [src,gen] of [['Cleveland',fromCleveland],['The Met',fromMet]]){
+    const diag=D[src]={searchOk:0,searchFail:0,records:0,recordFail:0,filtered:0,noImage:0,read:0,refused:0};
+    for(const name of ARTISTS){ if(libHalt) break; libEl.status.textContent=`Looking up ${name} at ${src}`; let per=0;
+      for await(const it of gen(name,diag)){ if(libHalt||per>=MET_PER*2) break; if(seen.has(it.src)) continue; seen.add(it.src);
+        libEl.status.textContent=`Reading ${it.meta.title}, ${it.meta.artist||''} (${src})`;
+        try{ const im=await loadImg(it.src,true); libAdd(im,it.meta); diag.read++; per++; }catch(e){ diag.refused++; }
+        await pause(60); } } }
+  const line=(k,d)=>`${k}: searches ${d.searchOk} ok / ${d.searchFail} failed, records ${d.records} read / ${d.recordFail} failed, ${d.filtered} not public-domain ink paintings by these painters, ${d.noImage} without images, images ${d.read} read / ${d.refused} refused`;
+  const total=Object.values(D).reduce((a,d)=>a+d.read,0);
+  libEl.status.innerHTML=(total?`The library has ${lib.lobes.length} lobes from ${lib.paintings.length} paintings.`:'No images could be read here. Download images from the museums\' open-access pages and use Add your own images.')+'<br><small>'+Object.entries(D).map(([k,d])=>line(k,d)).join('<br>')+'</small>';
+  console.log('[library]',JSON.stringify(D));
   libBusy=false; libRefresh(); });
 libEl.stop.addEventListener('click',()=>{ libHalt=true; });
 function libraryJson(){ return JSON.stringify({format:'splashed-ink-lobes/v1',created:new Date().toISOString(),

@@ -87,9 +87,10 @@ The *Detail* menu trades speed for resolution (Fast, Standard, Fine).
 
 **Learning from many paintings.** Below the copy, *Learn from many paintings* reads paintings without painting them and records
 how each painter answered a blot of ink: every lobe of wash, put in its own frame (along its long axis, from the fuller end), with
-the lines drawn in and around it. *Fetch public-domain paintings from The Met* looks up xieyi painters (Bada Shanren, Xu Wei, Shitao,
-Chen Chun and others) in The Met's Open Access collection, keeps only works marked public domain, and reads their album leaves in your
-browser. *Add your own images* does the same for files. *Export library* writes `lobes-v1.json`. Load it in Splashed Ink
+the lines drawn in and around it. *Fetch public-domain paintings* looks up xieyi painters (Bada Shanren, Xu Wei, Shitao, Chen Chun,
+Huang Shen, Xugu and others) in the open-access (CC0) collections of the Cleveland Museum of Art and The Met, keeps only ink paintings
+marked public domain, and reads them in your browser. If nothing arrives, the status line counts each step (search, records, filter,
+images) so you can see where it stopped. *Add your own images* does the same for files. *Export library* writes `lobes-v1.json`. Load it in Splashed Ink
 (Session, *Load a lobe library*) or put it at `data/lobes-v1.json` in the repository, and the Reader partner outlines your ink by
 finding the most similar lobes and borrowing how they were drawn, instead of following rules. Only shapes, line positions and each
 painting's title, artist and source are kept; no image is stored.
