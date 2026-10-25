@@ -1,0 +1,26 @@
+name: Fetch corpus
+# Puts the curated CC0 images on the `corpus` branch (never on main), for looking at them while annotating motifs.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["tools/fetch_corpus.py", ".github/workflows/fetch-corpus.yml"]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests && python tools/fetch_corpus.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan corpus-new
+          git rm -rq --cached .
+          git add -f corpus
+          git commit -qm "Corpus images (CC0, Cleveland Museum of Art Open Access)"
+          git push -f origin corpus-new:corpus
