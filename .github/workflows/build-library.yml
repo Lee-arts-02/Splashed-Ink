@@ -1,0 +1,31 @@
+name: Build lobe library
+# Downloads public-domain (CC0) ink paintings from the Cleveland Museum of Art and The Met, reads them with Machine Copy
+# in a headless browser, and uploads data/lobes-v1.json as an artifact. Images are never committed.
+on:
+  workflow_dispatch:
+    inputs:
+      per:
+        description: Works per painter per museum
+        default: "10"
+  push:
+    branches: [main]
+    paths: ["tools/build_library.py", ".github/workflows/build-library.yml"]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright requests && python -m playwright install --with-deps chromium
+      - run: python tools/build_library.py --per "${{ inputs.per || '10' }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lobe-library
+          path: |
+            data/lobes-v1.json
+            data/lobes-v1-sources.md

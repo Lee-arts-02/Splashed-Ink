@@ -861,7 +861,7 @@ async function* fromCleveland(name,diag){
     const u=o.images&&o.images.web&&o.images.web.url; if(!u){ diag.noImage++; continue; }
     yield {src:u, meta:{title:o.title,artist:who,date:o.creation_date,source:'Cleveland Museum of Art',url:o.url,image:u,license:'CC0 (CMA Open Access)'}}; } }
 async function* fromMet(name,diag){
-  let ids=[]; try{ const r=await (await fetch(`${MET}search?artistOrCulture=true&hasImages=true&q=${encodeURIComponent(name)}`)).json(); ids=(r.objectIDs||[]).slice(0,40); diag.searchOk++; }
+  let ids=[]; try{ const r=await (await fetch(`${MET}search?hasImages=true&q=${encodeURIComponent(name)}`)).json(); ids=(r.objectIDs||[]).slice(0,40); diag.searchOk++; }
   catch(e){ diag.searchFail++; return; }
   for(const id of ids){
     let o; try{ o=await (await fetch(`${MET}objects/${id}`)).json(); diag.records++; }catch(e){ diag.recordFail++; continue; }
@@ -879,7 +879,7 @@ libEl.met.addEventListener('click',async()=>{
         libEl.status.textContent=`Reading ${it.meta.title}, ${it.meta.artist||''} (${src})`;
         try{ const im=await loadImg(it.src,true); libAdd(im,it.meta); diag.read++; per++; }catch(e){ diag.refused++; }
         await pause(60); } } }
-  const line=(k,d)=>`${k}: searches ${d.searchOk} ok / ${d.searchFail} failed, records ${d.records} read / ${d.recordFail} failed, ${d.filtered} not public-domain ink paintings by these painters, ${d.noImage} without images, images ${d.read} read / ${d.refused} refused`;
+  const line=(k,d)=>`${k}: searches ${d.searchOk} ok / ${d.searchFail} failed, records ${d.records} read / ${d.recordFail} failed, ${d.filtered} not public-domain ink paintings by these painters, ${d.noImage} without images, images ${d.read} read / ${d.refused} refused${d.refused?' (the museum\'s image server does not let other pages read its images; the repository\'s Build lobe library workflow gets around this)':''}`;
   const total=Object.values(D).reduce((a,d)=>a+d.read,0);
   libEl.status.innerHTML=(total?`The library has ${lib.lobes.length} lobes from ${lib.paintings.length} paintings.`:'No images could be read here. Download images from the museums\' open-access pages and use Add your own images.')+'<br><small>'+Object.entries(D).map(([k,d])=>line(k,d)).join('<br>')+'</small>';
   console.log('[library]',JSON.stringify(D));
