@@ -567,6 +567,36 @@ function buildPlan(T,W,H,Tf,FW,FH){
 // ---------------- lobes and their lines: the data a reading partner learns from ----------------
 // Every line of the plan is split into runs by the lobe it lies nearest to (within about one half-width of the lobe's edge);
 // each run is stored in that lobe's own frame. A lobe with no lines is kept too: the painter chose to leave it as it was.
+// Lines for the library. The copy only needs lines that stand out from the paper; a reader needs the ones painted into the
+// wash too (veins, the edge of a fin, a branch over a rock), so lines are found at two scales: anything darker than its
+// surroundings within 2 cells (and dark enough to be ink), or than its surroundings within the copy's larger radius.
+// Centre lines broken at junctions are then joined end to end wherever one continues the other.
+function joinPaths(paths,gap,cosMin){
+  const dirOut=(p,atEnd)=>{ const n=p.length, a=atEnd?p[n-1]:p[0], b=atEnd?p[Math.max(0,n-5)]:p[Math.min(n-1,4)], dx=a[0]-b[0], dy=a[1]-b[1], m=Math.hypot(dx,dy)||1; return [dx/m,dy/m]; };
+  for(let pass=0;pass<6;pass++){ let merged=false; const alive=paths.map(()=>true);
+    for(let i=0;i<paths.length;i++){ if(!alive[i]) continue;
+      for(const ei of [true,false]){ let best=-1, bEnd=null, bs=1e9; const A=paths[i], pa=ei?A[A.length-1]:A[0], da=dirOut(A,ei);
+        for(let k=0;k<paths.length;k++){ if(k===i||!alive[k]) continue; const B=paths[k];
+          for(const ek of [true,false]){ const pb=ek?B[B.length-1]:B[0], dx=pb[0]-pa[0], dy=pb[1]-pa[1], d=Math.hypot(dx,dy); if(d>gap) continue;
+            const db=dirOut(B,ek), c1=d>0.5?(dx*da[0]+dy*da[1])/d:1, c2=-(da[0]*db[0]+da[1]*db[1]);   // B must carry on the way A was going
+            if(c1<cosMin*0.5||c2<cosMin) continue; const sc=d*(2-c2); if(sc<bs){ bs=sc; best=k; bEnd=ek; } } }
+        if(best>=0){ let B=paths[best]; if(ei){ if(bEnd) B=B.slice().reverse(); paths[i]=A.concat(B); } else { if(!bEnd) B=B.slice().reverse(); paths[i]=B.concat(A); }
+          alive[best]=false; merged=true; break; } } }
+    paths=paths.filter((_,i)=>alive[i]); if(!merged) break; }
+  return paths; }
+function libraryLines(T,W,H){
+  const n=W*H, ro=Math.max(3,Math.round(0.018*Math.min(W,H))), open=r=>morph(morph(T,W,H,r,false),W,H,r,true), o2=open(2), oR=open(ro), mask=new Uint8Array(n);
+  for(let j=0;j<n;j++) mask[j]=((T[j]-o2[j]>0.06&&T[j]>0.15)||T[j]-oR[j]>0.12)?1:0;
+  dropSmall(mask,W,H,6);
+  const dt=edt(mask,W,H);
+  let paths=traceSkeleton(thin(mask,W,H),W,H).filter(p=>p.length>=2).map(p=>p.map(i=>[(i%W)+0.5,((i/W)|0)+0.5,Math.max(1,2*dt[i]-1)]));
+  paths=joinPaths(paths,3.5,0.55);
+  const out=[];
+  for(const p of paths){ let L=0; for(let i=1;i<p.length;i++) L+=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]); if(L<6) continue;
+    const xy=smoothSeq(p.map(q=>[q[0],q[1]]),2), w=smoothSeq(p.map(q=>q[2]),3), pts=[]; let acc=0;
+    for(let i=0;i<p.length;i++){ if(i>0) acc+=Math.hypot(xy[i][0]-xy[i-1][0],xy[i][1]-xy[i-1][1]); if(i===0||i===p.length-1||acc>=2.5){ pts.push([xy[i][0],xy[i][1],w[i]]); acc=0; } }
+    out.push({pts,len:L}); }
+  return out; }
 function lobeRecords(pl,W,H,T){
   const G=(pl.lobeGroups||[]).filter(px=>px.length>=Math.max(12,0.0006*W*H)); if(!G.length) return [];   // specks are not blots
   const n=W*H, own=new Int32Array(n).fill(-1), dist=new Float32Array(n).fill(1e9), q=[];
@@ -576,10 +606,12 @@ function lobeRecords(pl,W,H,T){
   const short=Math.min(W,H), recs=G.map(px=>{ const fr=LobeKit.frame(px,W,T); return {fr,f:LobeKit.features(fr,short),lines:[]}; });
   const flush=(run,o)=>{ if(!run||run.length<2||o<0) return; let L=0; for(let i=1;i<run.length;i++) L+=Math.hypot(run[i][0]-run[i-1][0],run[i][1]-run[i-1][1]); if(L<3) return; const fr=recs[o].fr;
     recs[o].lines.push(run.map(p=>{ const [u,v]=LobeKit.toLocal(fr,p[0],p[1]); return [+u.toFixed(3),+v.toFixed(3),+(p[2]/fr.hw).toFixed(3)]; })); };
-  for(const st of pl.strokes){ let run=null, cur=-1;
+  const near=(o,p)=>{ const [u,v]=LobeKit.toLocal(recs[o].fr,p[0],p[1]); return Math.abs(u)<=1.5&&Math.abs(v)<=2.4; };
+  for(const st of libraryLines(T,W,H)){ let run=null, cur=-1;
     for(const p of st.pts){ const X=Math.min(W-1,Math.max(0,Math.floor(p[0]))), Y=Math.min(H-1,Math.max(0,Math.floor(p[1]))), o=own[Y*W+X];
+      if(cur>=0&&near(cur,p)){ run.push(p); continue; }                    // a line stays with its lobe while it is still around it
       const ok=o>=0&&dist[Y*W+X]<=1.2*recs[o].fr.hw+2;
-      if(ok&&o===cur) run.push(p); else { flush(run,cur); run=ok?[p]:null; cur=ok?o:-1; } }
+      flush(run,cur); run=ok?[p]:null; cur=ok?o:-1; }
     flush(run,cur); }
   return recs.map(r=>({f:r.f.map(v=>+v.toFixed(3)),lines:r.lines})); }
 
@@ -924,7 +956,7 @@ window.__mc={ get plan(){return plan;}, get size(){return [W,H];}, get running()
   refine(){ prevScore=lastScore; lastAdded=updateGain(); refinePass++; running=true; job={gen:fullJob(true),onDone:finish}; }, pump(ms){ const t0=performance.now(); while(job&&performance.now()-t0<ms){ const r=job.gen.next(); updateStatus(); if(r.done){ const ok=r.value!==false&&running; const d=job; job=null; d.onDone(ok); } } if(sim) simShow(sim); return !!job; },
   test(w,h,pl){ if(sim){ freeSim(sim); } W=w; H=h; T=new Float32Array(w*h); plan=pl; cv.width=w*2; cv.height=h*2; sim=makeSim(w,h,7); const R=brushR(w,h);
     pl.washStrokes=pl.washStrokes||[]; for(const x of pl.washes){ x.ink=x.ink||0.8; } running=true; job={gen:execute(sim,pl,7),onDone:()=>{running=false;}}; },
-  get T(){ return Array.from(T); }, lobeRecords(){ return lobeRecords(plan,W,H,T); }, get lib(){ return lib; }, libraryJson, libAdd(src,meta){ return loadImg(src,false).then(im=>libAdd(im,meta||{title:'test'})); }, density(){ return sim?Array.from(simDensity(sim)):null; }, score(){ return sim?score():null; }, get lastScore(){ return lastScore; }, scoreMaps(D,T,w,h){ return scoreMaps(Float32Array.from(D),Float32Array.from(T),w,h); }, exportJson(){ return exportData(); } };
+  get T(){ return Array.from(T); }, libraryLines(){ return libraryLines(T,W,H).map(l=>l.pts); }, lobeRecords(){ return lobeRecords(plan,W,H,T); }, get lib(){ return lib; }, libraryJson, libAdd(src,meta){ return loadImg(src,false).then(im=>libAdd(im,meta||{title:'test'})); }, density(){ return sim?Array.from(simDensity(sim)):null; }, score(){ return sim?score():null; }, get lastScore(){ return lastScore; }, scoreMaps(D,T,w,h){ return scoreMaps(Float32Array.from(D),Float32Array.from(T),w,h); }, exportJson(){ return exportData(); } };
 })();
 </script>
 </body>
