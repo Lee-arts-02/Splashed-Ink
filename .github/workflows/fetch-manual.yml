@@ -1,0 +1,28 @@
+name: Fetch manual
+# Pages of the Mustard Seed Garden Manual (NDL, public domain) onto the `manual` branch, never main.
+on:
+  workflow_dispatch:
+    inputs:
+      args:
+        description: Arguments for tools/fetch_manual.py
+        default: "--survey"
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests pillow && python tools/fetch_manual.py ${{ inputs.args }}
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin manual || true
+          mkdir -p /tmp/m && cp -r manual/. /tmp/m/
+          if git rev-parse --verify origin/manual >/dev/null 2>&1; then git checkout -B manual origin/manual; else git checkout --orphan manual && git rm -rq --cached . ; fi
+          mkdir -p manual && cp -r /tmp/m/. manual/
+          git add -f manual && git commit -qm "Manual pages (NDL, public domain)" && git push origin manual
