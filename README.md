@@ -105,7 +105,7 @@ painting's title, artist and source are kept; no image is stored.
 |---|---|---|---|
 | Plan v2 (a painting taken apart) | written by Machine Copy | [`plan-v2.schema.json`](docs/schema/plan-v2.schema.json) | [`examples/plan-example.json`](examples/plan-example.json) |
 | Session v1 (a recorded sitting) | written by Splashed Ink | [`session-v1.schema.json`](docs/schema/session-v1.schema.json) | [`examples/session-example.json`](examples/session-example.json) |
-| Lobe library v1 (how painters outline blots) | written by Machine Copy, read by Splashed Ink's Reader | [`lobes-v1.schema.json`](docs/schema/lobes-v1.schema.json) | [`examples/lobes-example.json`](examples/lobes-example.json) |
+| Lobe library v1 (how painters outline blots) | written by Machine Copy, read by Splashed Ink's Reader; the shipped one is [`data/lobes-v1.json`](data/lobes-v1-sources.md) | [`lobes-v1.schema.json`](docs/schema/lobes-v1.schema.json) | [`examples/lobes-example.json`](examples/lobes-example.json) |
 
 The examples are synthetic. No painting is included in this repository. Check any file with `python tools/validate.py file.json`.
 
@@ -146,7 +146,7 @@ run `python tests/run_checks.py --splashed` and `--machine-copy` separately if y
 
 * Pull the ink simulation into one small shared library; the two apps currently carry slightly different copies of the step function.
 * Add momentum to the simulation so ink can be thrown and rush ahead of a stroke. Splashed Ink would gain the most.
-* A first public library built from The Met's public-domain xieyi paintings, shipped at `data/lobes-v1.json`.
+* More paintings in the library. The first one (`data/lobes-v1.json`, [list](data/lobes-v1-sources.md)) has 39 works, all from the Cleveland Museum of Art; The Met's API returned nothing to GitHub's servers. Some works in it are fine-line rather than splashed (Shen Zhou's Tiger Hill album, Liang Kai's Sericulture); a curated list would sharpen what the Reader learns.
 * Lines in the library come out of Machine Copy in fragments (its centre lines break at junctions). Joining them would let the Reader borrow whole gestures. After that, a sequence model conditioned on the lobe instead of nearest neighbours.
 * Comparison partners: a mirror that repeats the person's own habits.
 * A Chinese-language interface.
