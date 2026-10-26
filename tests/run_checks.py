@@ -16,6 +16,7 @@ What is checked
   5. URL parameters set and lock the settings.
   6. Machine Copy extracts a plan from a synthetic image, paints it, and exports a file that passes the schema.
   7. Exported example files pass the schemas.
+  8. Look: the person's charcoal and hints a rung at a time, which never become ink.
 
 Pass --splashed or --machine-copy to run one half. The browser flags below use software rendering so that this also runs on a machine without a GPU. It is slow (minutes).
 """
@@ -306,6 +307,25 @@ if RUN_SI:
         cp.set_input_files("#charcoalImport", str(ROOT / "examples/paper-example.png")); cp.wait_for_timeout(2500)
         r = cp.evaluate("({o: +window.__si.charcoalShown(), ev: window.__si.session.events.filter(e => e.e === 'ch').length})")
         check("a charcoal layer shows over the paper and is recorded", r["o"] > 0.3 and r["ev"] == 1, str(r))
+        b.close()
+
+# --- Look: the person's charcoal, hints a rung at a time, never ink
+if RUN_SI:
+    with sync_playwright() as pw:
+        b = pw.chromium.launch(args=FLAGS); lp = b.new_page(viewport={"width": 390, "height": 700}); lp.set_default_timeout(120000)
+        lp.goto(SI + "?preset=learner"); lp.wait_for_timeout(500)
+        lp.evaluate("j => window.__si.setMotifs(j)", json.loads((ROOT / "data/motifs-v1.json").read_text()))
+        lp.evaluate("document.getElementById('start').click()"); lp.wait_for_timeout(300)
+        r = lp.evaluate("""() => { const si = window.__si;
+          si.tool('pour'); si.pd('a',0.5,0.45); for (let i = 0; i < 20; i++) { si.pm('a',0.5+0.12*i/20,0.45); si.step(6); } si.pu('a'); si.step(200);
+          const before = si.paper().tone.reduce((a,b)=>a+b,0); si.tool('look');
+          for (let k = 0; k < 4; k++) si.look.up([[0.56,0.45]]);
+          si.look.up([[0.47,0.44],[0.52,0.40],[0.58,0.41],[0.63,0.45]]); si.look.up([[0.56,0.45]]); si.step(2);
+          const after = si.paper().tone.reduce((a,b)=>a+b,0), lk = si.session.events.filter(e => e.e === 'lk');
+          return {rungs: lk.map(e => e.rung), readings: lk.map(e => e.reading), marks: lk[lk.length-1].withMarks, shown: si.look.state.hints.length, inkChange: Math.abs(after-before)/Math.max(1,before), off: (si.knob('hints','off'), si.look.up([[0.56,0.45]]), si.session.events.filter(e => e.e === 'lk').length) }; }""")
+        check("Look gives hints a rung at a time, then another reading, and follows the person's charcoal",
+              r["rungs"][:4] == [1, 2, 3, 2] and r["readings"][3] == 1 and r["marks"] and r["shown"] == 1, str(r))
+        check("Look never changes the ink, and with hints off a tap shows nothing", r["inkChange"] < 1e-3 and r["off"] == 5, str(r))
         b.close()
 
 # --- the shared lobe code must be the same in both apps

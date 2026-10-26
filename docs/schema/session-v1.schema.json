@@ -182,6 +182,14 @@
             "free"
           ],
           "description": "Who does what. Absent in sessions from before version 0.5, which behave as 'free'."
+        },
+        "hints": {
+          "enum": [
+            "off",
+            "ladder",
+            "whole"
+          ],
+          "description": "Charcoal hints from the Look tool: none, a little at a time (the default), or a whole reading at once. Absent in sessions from before version 0.6."
         }
       }
     },
@@ -419,7 +427,8 @@
                 "ink",
                 "words",
                 "sees",
-                "redo"
+                "redo",
+                "hints"
               ]
             },
             "v": {
@@ -478,7 +487,8 @@
               "enum": [
                 "pour",
                 "brush",
-                "line"
+                "line",
+                "look"
               ]
             }
           },
@@ -593,6 +603,147 @@
             "name"
           ],
           "description": "A charcoal layer (a faint hint from outside, such as the charcoal notebook) was shown over the paper: the file's name, or 'again'. It fades and never changes the ink, so it is not needed to replay the paper."
+        },
+        {
+          "properties": {
+            "e": {
+              "const": "cm"
+            },
+            "path": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "minItems": 2
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "description": "The person sketched with the Look tool: a charcoal line (x, y from 0 to 1) shown over the paper. Never ink, so not needed to replay the paper."
+        },
+        {
+          "properties": {
+            "e": {
+              "const": "lk"
+            },
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "rung": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3,
+              "description": "0 nothing to read where the person tapped; 1 where a painter would start; 2 half the form; 3 all of it"
+            },
+            "mode": {
+              "enum": [
+                "ladder",
+                "whole"
+              ]
+            },
+            "reading": {
+              "type": "integer",
+              "description": "which of the candidate readings (0 = the best fit)"
+            },
+            "motif": {
+              "type": "string"
+            },
+            "from": {
+              "type": "string"
+            },
+            "withMarks": {
+              "type": "boolean",
+              "description": "the reading took the person's own charcoal into account"
+            },
+            "skill": {
+              "type": "integer",
+              "description": "outlines the person had made so far without asking for a hint; hints fade sooner as it grows"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              }
+            },
+            "dots": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "ring": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "dur": {
+              "type": "integer",
+              "description": "ticks until the hint has faded"
+            },
+            "alpha": {
+              "type": "number"
+            },
+            "blot": {
+              "type": "integer",
+              "description": "which blot on this sheet (a new hint on the same blot replaces the last one)"
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "rung",
+            "mode"
+          ],
+          "description": "The person tapped a blot with the Look tool and was shown a charcoal hint, recorded with what was drawn so a replay shows what they saw. Never ink."
+        },
+        {
+          "properties": {
+            "e": {
+              "const": "li"
+            },
+            "hinted": {
+              "type": "boolean"
+            },
+            "follow": {
+              "type": "number",
+              "description": "share of the outline that lies on hint lines shown for that blot"
+            },
+            "own": {
+              "type": "number",
+              "description": "share of the outline that lies on the person's own charcoal"
+            }
+          },
+          "required": [
+            "hinted",
+            "follow",
+            "own"
+          ],
+          "description": "After an outline on a blot: whether a hint had been asked for there, and how closely the outline follows the hints and the person's own charcoal."
         }
       ]
     }

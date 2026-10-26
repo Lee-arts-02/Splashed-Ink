@@ -32,6 +32,7 @@ canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-actio
 #charcoal{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;opacity:0;z-index:1;mix-blend-mode:multiply}
 #charcoal.on{opacity:1;transition:opacity 1.6s ease}
 #charcoal.fade{opacity:0;transition:opacity 40s linear}
+#look{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;mix-blend-mode:multiply}
 button,input{font-family:var(--serif);color:inherit}
 button{cursor:pointer}
 button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
@@ -108,6 +109,7 @@ button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid va
 <body>
 <canvas id="c" aria-label="Rice-paper canvas: press and hold to pour ink, tilt to let it run"></canvas>
 <img id="charcoal" alt="" aria-hidden="true">
+<canvas id="look" aria-hidden="true"></canvas>
 
 <div id="intro" role="dialog" aria-labelledby="t">
   <div class="intro-inner">
@@ -119,6 +121,7 @@ button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid va
       <p>One of you splashes, the other outlines: reading the ink and drawing a form out of it with a fine brush. Wet paper looks darker; outline it while wet and the line blooms, wait and it stays crisp.</p>
       <p>The more you pour, the paler the ink. Pause, and it darkens again.</p>
       <p>The paper dries. What falls cannot be taken back.</p>
+      <p>With the Look tool, sketch what you see in the ink in charcoal. Stuck? Tap a blot: a faint hint appears, a little more each time you tap. Charcoal fades and never becomes ink; only your brush decides.</p>
       <p>When you are ready, pass the paper. Your partner answers only in ink, in its own role.</p>
       <p>The Friction button turns each of these resistances up or down.</p>
     </div>
@@ -158,8 +161,8 @@ button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid va
 <section class="sheet" id="fricPanel" role="dialog" aria-labelledby="fricTitle" hidden>
   <button class="x" type="button" data-close aria-label="Close">&times;</button>
   <h2 id="fricTitle">Friction</h2>
-  <p class="lede">Each setting adds or removes one kind of resistance between you, the paper and your partner. Seamful is the piece as it was designed. Seamless is the familiar frictionless tool.</p>
-  <div class="presets"><button class="btn" id="presetSeamful" type="button">Seamful</button><button class="btn" id="presetSeamless" type="button">Seamless</button></div>
+  <p class="lede">Each setting adds or removes one kind of resistance between you, the paper and your partner. Seamful is the piece as it was designed. Seamless is the familiar frictionless tool. Learner is for a beginner: you splash, look and outline yourself, with charcoal hints when you ask.</p>
+  <div class="presets"><button class="btn" id="presetSeamful" type="button">Seamful</button><button class="btn" id="presetSeamless" type="button">Seamless</button><button class="btn" id="presetLearner" type="button">Learner</button></div>
   <div id="groups"></div>
 </section>
 
@@ -208,7 +211,7 @@ const hasF32 = !!gl.getExtension('EXT_color_buffer_float'), hasF16 = !!gl.getExt
 const P = new URLSearchParams(location.search);
 
 // ================= constants =================
-const APP_VERSION = '0.5.0';
+const APP_VERSION = '0.6.0';
 const TICK = 1/60, STEPS = 6, POUR = 0.06, MAXP = 4, MAXS = 24, SIM_MAXPX = 260000, MAX_UNDO = 12;   // MAXP pointers at once, MAXS brush stamps per simulation step
 const BRUSH_USE = 0.4, BRUSH_REDIP = 6, LINE_USE = 0.12;                                                             // the brush spends 40% of a full pot per sheet-width drawn, and re-dips 6x faster than a pour recovers
 const KR = 1.5, KD = 0.9;                                                                              // brush recipe constants, calibrated with Machine Copy's lines
@@ -218,8 +221,9 @@ const TONES = [[0.82,'Scorched ink'],[0.6,'Thick ink'],[0.38,'Heavy ink'],[0.16,
 const TONE_CYCLE = [1,0.7,0.45,0.2,0];
 
 // ================= friction settings =================
-const DEFAULTS = {roles:'you-splash', undo:'none', drying:'normal', ink:'normal', words:'off', sees:'paper', redo:'final'};
-const SEAMLESS = {roles:'free', undo:'unlimited', drying:'instant', ink:'unlimited', words:'on', sees:'paper+strokes', redo:'redo'};
+const DEFAULTS = {roles:'you-splash', undo:'none', drying:'normal', ink:'normal', words:'off', sees:'paper', redo:'final', hints:'ladder'};
+const SEAMLESS = {roles:'free', undo:'unlimited', drying:'instant', ink:'unlimited', words:'on', sees:'paper+strokes', redo:'redo', hints:'whole'};
+const LEARNER = {roles:'free', undo:'one', drying:'normal', ink:'normal', words:'off', sees:'paper', redo:'final', hints:'ladder'};   // for a beginner: splash, then look and outline yourself
 const KNOBS = {
   roles: {label:'Who does what', opts:[['you-splash','You splash, partner outlines'],['partner-splash','Partner splashes, you outline'],['free','Anything goes']],
           blurb:{'you-splash':'You pour and sweep the ink. Your partner can only outline: it reads what you made and gives it a form with a few fine lines.',
@@ -236,21 +240,26 @@ const KNOBS = {
   sees:  {label:'What your partner sees', opts:[['paper','The paper'],['paper+strokes','Paper and strokes']],
           blurb:{paper:'Your partner sees only the paper, like a painter arriving at a finished sheet.', 'paper+strokes':'Your partner also sees how you drew: order, timing and pauses.'}},
   redo:  {label:"Your partner's turn", opts:[['final','Final'],['redo','Can be redone']],
-          blurb:{final:"Your partner's turn happens once and stays.", redo:'You can ask your partner to try again.'}}
+          blurb:{final:"Your partner's turn happens once and stays.", redo:'You can ask your partner to try again.'}},
+  hints: {label:'Charcoal hints (Look tool)', opts:[['off','None'],['ladder','A little at a time'],['whole','The whole reading']],
+          blurb:{off:'Tapping a blot shows nothing. You can still sketch your own reading in charcoal.',
+                 ladder:'Tap a blot when you are stuck: first where a painter would start, then half the form, then all of it, then another reading. Hints follow your own charcoal, fade, and fade sooner as you outline without asking.',
+                 whole:'Tap a blot and a whole reading appears at once; tap again for another.'}}
 };
 function sanitizeSettings(o){ const s = {...DEFAULTS}; for (const k of Object.keys(KNOBS)) if (o && KNOBS[k].opts.some(x=>x[0]===o[k])) s[k]=o[k]; return s; }
 function settingsFromUrl(){
   let s = {...DEFAULTS};
   if (P.get('preset')==='seamless') s = {...SEAMLESS};
+  if (P.get('preset')==='learner') s = {...LEARNER};
   for (const k of Object.keys(KNOBS)) if (P.has(k)) s[k] = P.get(k);
   return sanitizeSettings(s);
 }
 const LOCKED = P.get('lock')==='1';
 // 泼 then 勾: the splash is chance, the outline reads it. Each role has its own tools.
-const TOOLS = {splash:['pour','brush'], outline:['line'], free:['pour','brush','line']};
+const TOOLS = {splash:['pour','brush'], outline:['line','look'], free:['pour','brush','line','look']};   // 'look' is charcoal: it never touches the ink
 const userRole = r => r==='you-splash'?'splash':(r==='partner-splash'?'outline':'free');
 const partnerRole = r => r==='you-splash'?'outline':(r==='partner-splash'?'splash':'free');
-const TOOL_NAME = {pour:'Pour', brush:'Brush', line:'Outline'};
+const TOOL_NAME = {pour:'Pour', brush:'Brush', line:'Outline', look:'Look'};
 let keepRecord = P.get('record')!=='0';
 
 // ================= shaders =================
@@ -419,7 +428,7 @@ const bArr=new Float32Array(MAXS*4), bArr2=new Float32Array(MAXS*4), bArr3=new F
 const sm01=(a,b,x)=>{ const t=Math.max(0,Math.min(1,(x-a)/(b-a))); return t*t*(3-2*t); };
 const Dn=t=>-Math.log(1-Math.min(Math.max(t,0),0.97))/1.05;      // ink deposit density that shows as tone t
 function resetEngine(seed,settings){ E.tick=0; E.rng=rng32(seed); E.pointers.clear(); E.userG={x:0,y:0}; E.g={x:0,y:0}; E.gv={x:0,y:0}; E.gf={x:0,y:0};
-  E.C=1; E.Cai=1; E.aiTurn=false; E.aiTilt=null; E.actor=null; E.steps=STEPS; E.settings={...settings}; E.onPartnerDone=null; E.tool=TOOLS[userRole(E.settings.roles)][0]; E.aiTool='pour'; E.strokeSeed=0; E.aiLight=false; }
+  E.C=1; E.Cai=1; E.aiTurn=false; E.aiTilt=null; E.actor=null; E.steps=STEPS; E.settings={...settings}; E.onPartnerDone=null; E.tool=TOOLS[userRole(E.settings.roles)][0]; E.aiTool='pour'; E.strokeSeed=0; E.aiLight=false; resetLook(true); }
 
 // ---- snapshots (undo and "ask again") ----
 let snapStack=[], snapPool=[], preAI=null;
@@ -517,7 +526,7 @@ function engineTick(){
 }
 
 // ---- events: the only way anything changes ----
-function newSheet(seed){ clearState(); makePaper(seed); E.C=1; E.Cai=1; snapPool.push(...snapStack); snapStack=[]; E.pointers.clear(); }
+function newSheet(seed){ resetLook(false); clearState(); makePaper(seed); E.C=1; E.Cai=1; snapPool.push(...snapStack); snapStack=[]; E.pointers.clear(); }
 function applyEvent(ev){
   switch(ev.e){
     case 'pd': if(userCount()===0) takeSnapshot(); E.pointers.set(ev.i,newPointer(ev.x,ev.y,ev.p,false,E.tool)); break;
@@ -534,6 +543,9 @@ function applyEvent(ev){
     case 'pg': startActor(ev.gestures); break;
     case 'pe': E.aiTurn=false; break;
     case 'rd': restorePreAI(); break;
+    case 'cm': LK.marks.push({pts:ev.path}); LK.ver++; break;                  // the person's own charcoal: drawn over the paper, never ink
+    case 'lk': if(ev.blot!==undefined) LK.hints=LK.hints.filter(h=>h.blot!==ev.blot); if(ev.lines||ev.ring) LK.hints.push({blot:ev.blot,lines:ev.lines||[],dots:ev.dots||[],ring:ev.ring,t0:ev.t,dur:ev.dur,alpha:ev.alpha}); break;
+    case 'li': if(!ev.hinted) LK.unaided++; break;
     default: break;                                                            // 'pr', 'note' and 'ch' (a charcoal layer shown) are records only
   } }
 
@@ -550,7 +562,7 @@ function strokesSummary(sinceTick){ const st=userEventsSince(sinceTick).slice(-1
     const o={tool:s.tool,start:r3(s.t0/60),seconds:r3((s.t1-s.t0)/60),pause:prevEnd===null?null:r3((s.t0-prevEnd)/60),length:r3(len),path:simplify(s.pts,8)}; prevEnd=s.t1; return o; }); }
 function computeSummary(s){
   const ar=s.device.viewport[0]/s.device.viewport[1]; const strokes=[], open=new Map(); let undo=0,redo=0,sheets=0,knobs=0,turns=0,errs=0,words=0,pSec=0,first=null,tool=TOOLS[userRole((s.settings&&s.settings.roles)||'free')][0],brushN=0,lineN=0,pLine=0,pSplash=0;
-  let rolesNow=(s.settings&&s.settings.roles)||'free';
+  let rolesNow=(s.settings&&s.settings.roles)||'free'; const look={marks:0,asks:0,rungs:[0,0,0,0],hinted:0,unaided:0,follow:0,own:0};
   for(const e of s.events){
     if(e.e==='tl'){ if(TOOLS[userRole(rolesNow)].includes(e.v)) tool=e.v; }
     else if(e.e==='k'&&e.k==='roles'){ rolesNow=e.v; if(!TOOLS[userRole(e.v)].includes(tool)) tool=TOOLS[userRole(e.v)][0]; }
@@ -559,12 +571,16 @@ function computeSummary(s){
     else if(e.e==='pu'&&open.has(e.i)){ const o=open.get(e.i); open.delete(e.i); strokes.push({t0:o.t0,t1:e.t,len:o.len}); }
     else if(e.e==='un') undo++; else if(e.e==='rd') redo++; else if(e.e==='sh') sheets++; else if(e.e==='k') knobs++;
     else if(e.e==='pg'){ turns++; for(const g of e.gestures){ pSec+=g.seconds||0; if(g.type==='outline') pLine++; else if(g.type==='pour'||g.type==='stroke') pSplash++; } } else if(e.e==='pe') errs++;
-    else if(e.e==='pa'&&e.words) words++; }
+    else if(e.e==='pa'&&e.words) words++;
+    else if(e.e==='cm') look.marks++; else if(e.e==='lk'){ if(e.rung>0){ look.asks++; look.rungs[Math.min(3,e.rung)]++; } }
+    else if(e.e==='li'){ if(e.hinted){ look.hinted++; look.follow+=e.follow; } else look.unaided++; look.own+=e.own; } }
   const pauses=[]; for(let i=1;i<strokes.length;i++) pauses.push((strokes[i].t0-strokes[i-1].t1)/60); pauses.sort((a,b)=>a-b);
   const pourSec=strokes.reduce((a,b)=>a+(b.t1-b.t0)/60,0), pathLen=strokes.reduce((a,b)=>a+b.len,0);
   return {seconds:r3(s.endTick/60), strokes:strokes.length, pourSeconds:r3(pourSec), pathLength:r3(pathLen), firstStrokeAfterSeconds:first===null?null:r3(first/60),
     medianPauseSeconds:pauses.length?r3(pauses[pauses.length>>1]):null, longestPauseSeconds:pauses.length?r3(pauses[pauses.length-1]):null,
-    brushStrokes:brushN, outlineStrokes:lineN, partnerOutlines:pLine, partnerSplashes:pSplash, undos:undo, partnerTurns:turns, partnerRedos:redo, partnerErrors:errs, partnerGestureSeconds:r3(pSec), wordsSent:words, newSheets:sheets, settingChanges:knobs}; }
+    brushStrokes:brushN, outlineStrokes:lineN, partnerOutlines:pLine, partnerSplashes:pSplash, undos:undo, partnerTurns:turns, partnerRedos:redo, partnerErrors:errs, partnerGestureSeconds:r3(pSec), wordsSent:words, newSheets:sheets, settingChanges:knobs,
+    charcoalMarks:look.marks, hintsAsked:look.asks, hintsByRung:look.rungs.slice(1), outlinesAfterHint:look.hinted, outlinesUnaided:look.unaided,
+    hintFollow:look.hinted?r3(look.follow/look.hinted):null, ownCharcoalFollow:(look.hinted+look.unaided)?r3(look.own/(look.hinted+look.unaided)):null}; }
 function emit(e,fields){ const ev={t:E.tick,e,...fields}; if(session) session.events.push(ev); applyEvent(ev); return ev; }
 function beginSession(){
   const seed=(Math.random()*1e9)>>>0, paperSeed=(Math.random()*1e9)>>>0, [w,h]=defaultSimSize();
@@ -604,9 +620,13 @@ const nx=x=>r4(Math.min(1,Math.max(0,x/innerWidth))), ny=y=>r4(Math.min(1,Math.m
 let ui={modal:false};
 function flushPending(){ for(const [id,v] of pending){ const q=E.pointers.get(id); if(q&&(Math.abs(q.x-v.x)>0.0005||Math.abs(q.y-v.y)>0.0005||Math.abs(q.p-v.p)>0.02)) emit('pm',{i:id,x:v.x,y:v.y,p:v.p}); } pending.clear(); }
 cv.addEventListener('pointerdown',e=>{ if(!live()||E.aiTurn||ui.modal) return; cv.setPointerCapture(e.pointerId); flushPending();
+  if(E.tool==='look'){ if(!LK.local) LK.local={id:e.pointerId,pts:[[nx(e.clientX),ny(e.clientY)]]}; e.preventDefault(); return; }
+  if(E.tool==='line') LK.track.set('u'+e.pointerId,[[nx(e.clientX),ny(e.clientY)]]);
   emit('pd',{i:'u'+e.pointerId,x:nx(e.clientX),y:ny(e.clientY),p:pr(e)}); againOK=false; refreshHud(); e.preventDefault(); });
-cv.addEventListener('pointermove',e=>{ const id='u'+e.pointerId; if(E.pointers.has(id)) pending.set(id,{x:nx(e.clientX),y:ny(e.clientY),p:pr(e)}); });
-const pUp=e=>{ const id='u'+e.pointerId; if(!E.pointers.has(id)||!live()) return; flushPending(); emit('pu',{i:id}); refreshHud(); };
+cv.addEventListener('pointermove',e=>{ if(LK.local&&LK.local.id===e.pointerId){ LK.local.pts.push([nx(e.clientX),ny(e.clientY)]); return; }
+  const id='u'+e.pointerId; if(LK.track.has(id)) LK.track.get(id).push([nx(e.clientX),ny(e.clientY)]); if(E.pointers.has(id)) pending.set(id,{x:nx(e.clientX),y:ny(e.clientY),p:pr(e)}); });
+const pUp=e=>{ if(LK.local&&LK.local.id===e.pointerId){ const L=LK.local; LK.local=null; if(live()) lookUp(L.pts); return; }
+  const id='u'+e.pointerId; if(!E.pointers.has(id)||!live()) return; flushPending(); emit('pu',{i:id}); const tr=LK.track.get(id); LK.track.delete(id); if(tr) judgeOutline(tr); refreshHud(); };
 cv.addEventListener('pointerup',pUp); cv.addEventListener('pointercancel',pUp); cv.addEventListener('lostpointercapture',pUp);
 cv.addEventListener('contextmenu',e=>e.preventDefault());
 
@@ -820,8 +840,8 @@ LOCAL.reader={label:'Reader (outlines what you splashed)', prev:null, async turn
 let MOT=null;
 function setMotifs(j,from){ if(!j||j.format!=='splashed-ink-motifs/v1'||!Array.isArray(j.motifs)||!j.motifs.length) return false;
   MOT={motifs:j.motifs.filter(x=>Array.isArray(x.f)&&x.f.length===2*LobeKit.PB+3),from};
-  const n=new Set(MOT.motifs.map(x=>x.painting&&x.painting.accession)).size;
-  LOCAL.reader.label=`Reader (reads your ink as one of ${MOT.motifs.length} motifs from ${n} paintings)`; if(typeof refreshPartners==='function') refreshPartners(); return true; }
+  const n=new Set(MOT.motifs.map(x=>x.painting&&(x.painting.accession||x.painting.url||x.painting.title))).size;
+  LOCAL.reader.label=`Reader (reads your ink as one of ${MOT.motifs.length} motifs from ${n} sources)`; if(typeof refreshPartners==='function') refreshPartners(); return true; }
 function blobsOf(m,prev){                                                      // whole blots: connected ink, not cut into lobes
   const {cols:W,rows:H,tone,wet}=m, n=W*H, seen=new Uint8Array(n), out=[];
   for(let j=0;j<n;j++){ if(seen[j]||tone[j]<=0.12) continue; const st=[j], px=[]; seen[j]=1;
@@ -839,11 +859,14 @@ async function claudeLabels(ctx,blobs,W,H){                                    /
   const prompt=`This is a sheet of rice paper with splashed ink. Ink painters read a splash as something (a bird, a fish, a rock, a leaf) and then draw it out with a few lines. For each blot listed (x and y from 0 to 1, origin top left), say what it could be read as, choosing only from: ${labels.join(', ')}. Choose what the shape suggests, not what is most common. Blots: ${list}. Reply with only JSON: {"readings":[{"blot":1,"label":"..."}]}`;
   try{ const r=await Promise.race([sampleFn.json(prompt,{images:ctx.imageBlob,modelTier:'default',cache:false}),sleep(25000).then(()=>null)]);
     const out={}; for(const x of (r&&r.readings)||[]) if(labels.includes(x.label)) out[(x.blot|0)-1]=x.label; return out; }catch(e){ return null; } }
-function motifGestures(mot,fr0,W,H,stage,rd,ink){
+function motifFrame(mot,fr0){
   // keep the motif's own proportions: a bird drawn into a long thin blot stays a bird, sized to the blot's area and turned its way
   const rt=Math.exp(-mot.f[0]), A=Math.sqrt(fr0.Lh*fr0.hw); let fr=mot.kind==='manual'?{...fr0,Lh:A/Math.sqrt(rt),hw:A*Math.sqrt(rt)}:fr0;
   if(mot.upright){ const flip=fr0.eu[0]*Math.cos(mot.angle)<0?-1:1, ax=Math.cos(mot.angle)*flip, ay=Math.sin(mot.angle);   // never rotated, only mirrored
     fr={...fr,eu:[ax,ay],ev:flip<0?[ay,-ax].map(v=>-v):[-ay,ax]}; }
+  return fr; }
+function motifGestures(mot,fr0,W,H,stage,rd,ink){
+  const fr=motifFrame(mot,fr0);
   const N=([x,y])=>[r4(cl01(x/W,0.005,0.995)),r4(cl01(y/H,0.005,0.995))], g=[];
   const toW=(u,v)=>LobeKit.toWorld(fr,u,v);
   const lines=mot.lines.map(ln=>{ const pts=ln.map(([u,v,w])=>{ const [x,y]=toW(u,v); return [x,y,w*fr.hw]; }); let len=0; for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]); return {pts,len}; })
@@ -1009,7 +1032,7 @@ $('again').addEventListener('click',()=>{ if(againOK) passPaper(true); });
 $('undo').addEventListener('click',()=>{ if(live()&&!E.aiTurn&&snapStack.length){ flushPending(); emit('un',{}); refreshHud(); } });
 $('tool').addEventListener('click',()=>{ if(!live()||E.aiTurn||userCount()||ui.modal) return; const ok=TOOLS[userRole(E.settings.roles)]; if(ok.length<2) return;
   flushPending(); emit('tl',{v:ok[(ok.indexOf(E.tool)+1)%ok.length]}); refreshHud(); });
-addEventListener('keydown',e=>{ if(e.target&&e.target.tagName==='INPUT') return; const v={b:'brush',p:'pour',o:'line'}[e.key];
+addEventListener('keydown',e=>{ if(e.target&&e.target.tagName==='INPUT') return; const v={b:'brush',p:'pour',o:'line',l:'look'}[e.key];
   if(v&&live()&&!E.aiTurn&&!userCount()&&!ui.modal&&TOOLS[userRole(E.settings.roles)].includes(v)){ flushPending(); emit('tl',{v}); refreshHud(); } });
 $('pot').addEventListener('click',()=>{ if(!live()||E.settings.ink!=='unlimited') return; let i=TONE_CYCLE.findIndex(c=>Math.abs(c-E.C)<0.03); i=(i+1)%TONE_CYCLE.length; emit('pot',{c:TONE_CYCLE[i]}); refreshHud(); });
 
@@ -1039,6 +1062,7 @@ function renderGroups(){
 function setKnob(k,v){ if(E.settings[k]===v) return; if(live()){ flushPending(); emit('k',{k,v}); } else { E.settings[k]=v; if(k==='roles'){ const ok=TOOLS[userRole(v)]; if(!ok.includes(E.tool)) E.tool=ok[0]; } } renderGroups(); if(k==='roles') refreshPartners(); refreshHud(); }
 $('presetSeamful').addEventListener('click',()=>{ for(const k of Object.keys(KNOBS)) setKnob(k,DEFAULTS[k]); });
 $('presetSeamless').addEventListener('click',()=>{ for(const k of Object.keys(KNOBS)) setKnob(k,SEAMLESS[k]); });
+$('presetLearner').addEventListener('click',()=>{ for(const k of Object.keys(KNOBS)) setKnob(k,LEARNER[k]); });
 function fmtDur(s){ s=Math.round(s); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 function renderSessions(){
   $('sessLede').textContent=session&&!session.endedAt?`This session has run for ${fmtDur(E.tick/60)}. ${keepRecord?'It is being kept on this device.':'It is not being kept.'}`:'No session is running.';
@@ -1073,6 +1097,76 @@ $('charcoalImport').addEventListener('change',e=>{ const f=e.target.files&&e.tar
   charcoalEl.onload=()=>{ closePanels(); showCharcoal(); $('charcoalAgain').disabled=false; };
   if(live()) emit('ch',{name:f.name.slice(0,120)}); });
 $('charcoalAgain').addEventListener('click',()=>{ closePanels(); showCharcoal(); if(live()) emit('ch',{name:'again'}); });
+// ================= Look: the person reads the ink; charcoal hints only when asked =================
+// The Look tool never makes ink. Drag to sketch your own reading in charcoal; tap a blot when stuck. Each tap on the same blot
+// gives a little more, as a teacher would: where a painter would start, then half the form, then all of it, then another reading.
+// Where the person has sketched, readings that agree with their charcoal come first, and the hint draws only what they have not
+// drawn yet. Hints fade, and fade sooner as the person outlines blots without asking. The person's charcoal is solid, hints are
+// dotted, so it is always clear whose is whose. Events (records only, never ink): 'cm' a charcoal mark, 'lk' a hint shown
+// (with what was drawn, so a replay shows what the person saw), 'li' how an outline relates to the hints and to their own charcoal.
+const lookCv=$('look'), lookCx=lookCv.getContext('2d');
+const LK={marks:[],hints:[],blots:[],unaided:0,ver:0,track:new Map(),local:null};
+function resetLook(all){ LK.marks=[]; LK.hints=[]; LK.blots=[]; LK.ver++; LK.track.clear(); LK.local=null; if(all) LK.unaided=0; }
+function densify(line,step){ const o=[line[0]]; for(let i=1;i<line.length;i++){ const a=line[i-1], b=line[i], n=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])/step));
+  for(let k=1;k<=n;k++) o.push([a[0]+(b[0]-a[0])*k/n,a[1]+(b[1]-a[1])*k/n]); } return o; }
+function nearFrac(pts,ref,tol){ if(!ref.length||!pts.length) return 0; let n=0; for(const p of pts) for(const q of ref) if(Math.abs(p[0]-q[0])<tol&&Math.hypot(p[0]-q[0],p[1]-q[1])<tol){ n++; break; } return n/pts.length; }
+function meanDist(pts,ref){ if(!ref.length) return 1e3; let s=0; for(const p of pts){ let d=1e9; for(const q of ref){ const e=Math.hypot(p[0]-q[0],p[1]-q[1]); if(e<d) d=e; } s+=d; } return s/pts.length; }
+function motifLinesOn(mot,fr0){ const fr=motifFrame(mot,fr0); return mot.lines.map(ln=>ln.map(([u,v])=>LobeKit.toWorld(fr,u,v))).filter(l=>l.length>=2); }   // paper-grid coordinates, in the manual's drawing order
+function blotAt(blobs,W,x,y){ let best=null,bd=1e9; for(const b of blobs){ for(const j of b.px){ const d=Math.hypot(j%W+0.5-x,((j/W)|0)+0.5-y); if(d<bd){ bd=d; best=b; } } } return bd<=4?best:null; }
+function marksNear(b,W,H){ let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9; for(const j of b.px){ const x=j%W, y=(j/W)|0; if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+  const pad=0.6*Math.sqrt(b.fr.Lh*b.fr.hw); return LK.marks.flatMap(m=>densify(m.pts.map(([u,v])=>[u*W,v*H]),0.8)).filter(([x,y])=>x>x0-pad&&x<x1+pad&&y>y0-pad&&y<y1+pad); }
+function rankReadings(b,W,H,mk){                                                  // the blot's shape, and the person's own charcoal where there is some
+  const f=LobeKit.features(b.fr,Math.min(W,H)), size=Math.sqrt(b.fr.Lh*b.fr.hw);
+  const fit=x=>x.upright?1.6*Math.abs(Math.log(b.aspect/x.aspect)):(x.kind==='manual'?1.6*Math.abs(f[0]-x.f[0]):shapeDist(f,x.f));
+  const c=MOT.motifs.map((x,k)=>({k,d:fit(x)})).sort((a,z)=>a.d-z.d).slice(0,mk.length?12:6);
+  if(mk.length) for(const r of c) r.d+=3*meanDist(mk,motifLinesOn(MOT.motifs[r.k],b.fr).flatMap(l=>densify(l,0.8)))/size;
+  return c.sort((a,z)=>a.d-z.d).slice(0,5).map(r=>r.k); }
+const r3p=p=>[r3(p[0]),r3(p[1])];
+function lookUp(pts){ const ar=innerWidth/innerHeight; let len=0; for(let i=1;i<pts.length;i++) len+=Math.hypot((pts[i][0]-pts[i-1][0])*ar,pts[i][1]-pts[i-1][1]);
+  if(len>=0.015) emit('cm',{path:simplify(pts,24)}); else askHint(pts[0][0],pts[0][1]); }
+function askHint(x,y){
+  const S=E.settings.hints||'ladder'; if(S==='off') return;
+  const ring=()=>emit('lk',{x:r4(x),y:r4(y),rung:0,mode:S,ring:[r3(x),r3(y)],dur:70,alpha:0.5});   // nothing to read here: a small ring, so the tap is not lost
+  if(!MOT) return ring();
+  const m=paperMaps(), W=m.cols, H=m.rows, b=blotAt(blobsOf(m,null),W,x*W,y*H); if(!b) return ring();
+  const mk=marksNear(b,W,H), size=Math.sqrt(b.fr.Lh*b.fr.hw);
+  let st=LK.blots.find(s=>Math.hypot(b.fr.cx-s.cx*W,b.fr.cy-s.cy*H)<0.5*Math.max(b.fr.Lh,s.Lh*W));
+  if(!st){ st={cx:0,cy:0,Lh:0,rung:0,ci:0,asked:0,ver:-1,cands:[],shown:[]}; LK.blots.push(st); }
+  st.cx=b.fr.cx/W; st.cy=b.fr.cy/H; st.Lh=b.fr.Lh/W;
+  if(st.ver!==LK.ver){ const c=rankReadings(b,W,H,mk); if(c[0]!==st.cands[st.ci]) st.rung=0; st.cands=c; st.ci=0; st.ver=LK.ver; }   // the person drew more: read again with their charcoal, and start again from the least help if the reading changed
+  if(S==='whole'){ if(st.asked) st.ci=(st.ci+1)%st.cands.length; st.rung=3; }
+  else if(st.rung>=3){ st.ci=(st.ci+1)%st.cands.length; st.rung=2; } else st.rung++;
+  st.asked++;
+  const mot=MOT.motifs[st.cands[st.ci]], lines=motifLinesOn(mot,b.fr), tol=0.16*size;
+  const open=lines.filter(l=>nearFrac(densify(l,0.8),mk,tol)<0.6);                    // what the person has not drawn yet
+  let draw=[], dots=[];
+  if(st.rung===1){ for(const l of open.slice(0,2)){ const d=densify(l,0.6); draw.push(d.slice(0,Math.max(2,Math.ceil(d.length*0.35)))); dots.push(l[0]); } }
+  else if(st.rung===2) draw=open.slice(0,mot.sketch||3);
+  else draw=lines;
+  if(!draw.length) return ring();
+  const N=p=>r3p([cl01(p[0]/W,0,1),cl01(p[1]/H,0,1)]), thin=l=>{ const st2=Math.max(1,Math.ceil(l.length/12)); return l.filter((_,i)=>i%st2===0||i===l.length-1).map(N); };
+  const sk=LK.unaided, dur=Math.round(60*Math.max(5,14-1.5*sk)), alpha=r3(Math.max(0.35,0.8-0.05*sk));   // fades sooner as the person reads alone
+  const L=draw.map(thin); st.shown.push(...L.flatMap(l=>densify(l,0.01)));
+  emit('lk',{x:r4(x),y:r4(y),blot:LK.blots.indexOf(st),rung:st.rung,mode:S,reading:st.ci,motif:mot.label,from:((mot.painting&&mot.painting.title)||'').slice(0,90),withMarks:mk.length>0,skill:sk,lines:L,dots:dots.map(N),dur,alpha}); }
+function judgeOutline(pts){                                                       // after an outline: did it follow a hint, the person's own charcoal, or neither?
+  if(pts.length<3) return; const m=paperMaps(), W=m.cols, H=m.rows, g=densify(pts.map(([x,y])=>[x*W,y*H]),0.8), mid=g[g.length>>1];
+  let b=null,bd=1e9; for(const bb of blobsOf(m,null)){ if(bb.area<40) continue; const d=Math.hypot(bb.fr.cx-mid[0],bb.fr.cy-mid[1])/Math.max(2,bb.fr.Lh); if(d<bd){ bd=d; b=bb; } }
+  if(!b||bd>1.6) return;
+  const size=Math.sqrt(b.fr.Lh*b.fr.hw), tol=0.15*size, st=LK.blots.find(s=>Math.hypot(b.fr.cx-s.cx*W,b.fr.cy-s.cy*H)<0.6*Math.max(b.fr.Lh,s.Lh*W));
+  const hinted=!!(st&&st.asked), shown=hinted?st.shown.map(([x,y])=>[x*W,y*H]):[];
+  const mk=LK.marks.flatMap(mm=>densify(mm.pts.map(([x,y])=>[x*W,y*H]),0.8));
+  emit('li',{hinted,follow:r3(hinted?nearFrac(g,shown,tol):0),own:r3(nearFrac(g,mk,tol))}); }
+function drawLook(){ const dpr=devicePixelRatio||1, w=Math.round(innerWidth*dpr), h=Math.round(innerHeight*dpr);
+  if(lookCv.width!==w||lookCv.height!==h){ lookCv.width=w; lookCv.height=h; }
+  const c=lookCx, path=l=>{ if(l.length<2) return; c.beginPath(); c.moveTo(l[0][0]*w,l[0][1]*h); for(let i=1;i<l.length;i++) c.lineTo(l[i][0]*w,l[i][1]*h); c.stroke(); };
+  c.clearRect(0,0,w,h); c.lineCap='round'; c.lineJoin='round'; c.strokeStyle=c.fillStyle='rgb(112,98,84)';
+  c.setLineDash([]); c.lineWidth=2*dpr; c.globalAlpha=0.6; for(const m of LK.marks) path(m.pts); if(LK.local) path(LK.local.pts);   // the person's charcoal: solid
+  LK.hints=LK.hints.filter(hn=>E.tick-hn.t0<hn.dur);
+  for(const hn of LK.hints){ const t=(E.tick-hn.t0)/hn.dur; c.globalAlpha=hn.alpha*(t<0.06?t/0.06:t<0.5?1:1-(t-0.5)/0.5);
+    if(hn.ring){ c.setLineDash([]); c.lineWidth=1.5*dpr; c.beginPath(); c.arc(hn.ring[0]*w,hn.ring[1]*h,(8+12*t)*dpr,0,Math.PI*2); c.stroke(); continue; }
+    c.setLineDash([1.2*dpr,3.4*dpr]); c.lineWidth=2.6*dpr; for(const l of hn.lines) path(l);                                             // a hint: dotted, like charcoal dragged lightly
+    c.setLineDash([]); for(const d of hn.dots){ c.beginPath(); c.arc(d[0]*w,d[1]*h,3.2*dpr,0,Math.PI*2); c.fill(); } }
+  c.globalAlpha=1; }
 $('libImport').addEventListener('change',async e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; e.target.value='';
   try{ const t=await f.text(), j=JSON.parse(t); if(!setLibrary(j,'imported')) throw new Error('format'); const kept=lsSet('splashed-ink:lobes',t);
     showHint(`The Reader now learns from ${LIB.paintings.length} paintings (${LIB.lobes.length} lobes).${kept?'':' It is too large to keep in this browser, so load it again next time.'}`,6000); renderSessions(); }
@@ -1084,6 +1178,7 @@ $('sessImport').addEventListener('change',async e=>{ const f=e.target.files&&e.t
 function endAndShow(){ if(!session) return; closePanels(); flushPending(); for(const k of [...E.pointers.keys()]) if(k!=='ai'&&live()) emit('pu',{i:k});
   const s=finishSession(); running=false; mode='ended'; const m=s.summary, dl=$('sumStats'); dl.innerHTML='';
   const rows=[['Time',fmtDur(m.seconds)],['Strokes',m.strokes],['Brush strokes',m.brushStrokes||0],['Outlines',m.outlineStrokes||0],['Partner outlines',m.partnerOutlines||0],['Time pouring',fmtDur(m.pourSeconds)],['First stroke after',m.firstStrokeAfterSeconds===null?'-':m.firstStrokeAfterSeconds+' s'],['Median pause',m.medianPauseSeconds===null?'-':m.medianPauseSeconds+' s'],['Undos',m.undos],['Partner turns',m.partnerTurns],['Partner redos',m.partnerRedos],['Words sent',m.wordsSent],['Setting changes',m.settingChanges]];
+  if(m.charcoalMarks||m.hintsAsked||m.outlinesUnaided) rows.push(['Your charcoal marks',m.charcoalMarks],['Hints asked for',m.hintsAsked],['Outlines without a hint',m.outlinesUnaided],['Outlines after a hint',m.outlinesAfterHint]);
   for(const [a,b] of rows){ dl.insertAdjacentHTML('beforeend',`<dt>${a}</dt><dd>${b}</dd>`); }
   const reads=s.events.filter(e=>e.e==='pr'&&typeof e.note==='string'&&/read as/.test(e.note)).flatMap(e=>e.note.split('; ').filter(x=>x.startsWith('read as')));
   $('sumReads').innerHTML=reads.length?'<b>How your ink was read</b><br>'+reads.map(x=>x.replace(/</g,'&lt;')).join('<br>'):''; $('sumReads').hidden=!reads.length;
@@ -1108,7 +1203,7 @@ function replayFrame(){
     while(rp.idx<ev.length&&ev[rp.idx].t<=E.tick) applyEvent(ev[rp.idx++]);
     if(rp.idx>=ev.length&&E.tick>=rp.end){ render(); updateReplayBar(); $('replayInfo').textContent='Replay finished'; return; }
     engineTick(); }
-  render(); bubble.style.transform=`translate(${(E.g.x*18).toFixed(1)}px,${(E.g.y*18).toFixed(1)}px)`; updateReplayBar(); requestAnimationFrame(replayFrame); }
+  render(); drawLook(); bubble.style.transform=`translate(${(E.g.x*18).toFixed(1)}px,${(E.g.y*18).toFixed(1)}px)`; updateReplayBar(); requestAnimationFrame(replayFrame); }
 document.querySelectorAll('#replayBar [data-speed]').forEach(b=>b.addEventListener('click',()=>{ if(rp){ rp.speed=+b.dataset.speed; updateReplayBar(); } }));
 $('replayStop').addEventListener('click',()=>{ rp=null; $('replayBar').hidden=true; mode='ended'; const [w,h]=defaultSimSize(); initSim(w,h,(Math.random()*1e9)>>>0); render(); $('intro').classList.remove('gone'); });
 
@@ -1120,7 +1215,7 @@ function liveFrame(now){
   let n=0; while(acc>=TICK&&n<3){ flushPending(); emitGravity(); engineTick(); acc-=TICK; n++; if(E.tick-autosaveAt>=600){ autosaveAt=E.tick; saveSession(); } }
   if(acc>TICK) acc=0;
   if(dt>0.03) slow++; else slow=Math.max(0,slow-1); if(slow>40&&E.steps>3){ emit('st',{n:E.steps-1}); slow=0; }
-  render(); bubble.style.transform=`translate(${(E.g.x*18).toFixed(1)}px,${(E.g.y*18).toFixed(1)}px)`;
+  render(); drawLook(); bubble.style.transform=`translate(${(E.g.x*18).toFixed(1)}px,${(E.g.y*18).toFixed(1)}px)`;
   if((E.tick&7)===0) refreshHud();
   requestAnimationFrame(liveFrame); }
 function startLive(){ beginSession(); mode='live'; running=true; last=performance.now(); acc=0; slow=0; autosaveAt=0; refreshHud();
@@ -1149,6 +1244,7 @@ window.__si={ get E(){return E;}, get session(){return session;}, get mode(){ret
   g(x,y){ emit('g',{x:r3(x),y:r3(y)}); }, tool(v){ emit('tl',{v}); }, knob(k,v){ emit('k',{k,v}); }, undo(){ emit('un',{}); }, sheet(s){ emit('sh',{s}); }, pot(c){ emit('pot',{c}); },
   pass(gestures,words){ emit('pa',{partner:'test',words:words||undefined,sees:E.settings.sees}); emit('pg',{gestures}); }, redo(){ emit('rd',{}); },
   finish(){ return finishSession(); }, draw(){ render(); }, paper(){ const m=paperMaps(); return {cols:m.cols,rows:m.rows,tone:Array.from(m.tone),wet:Array.from(m.wet)}; }, partner(name,ctx){ return window.InkPartners[name].turn(ctx); }, setLibrary(j){ return setLibrary(j,'test'); }, setMotifs(j){ return setMotifs(j,'test'); }, get LIB(){ return LIB; }, snapDepth(){ return snapStack.length; }, charcoalShown(){ return getComputedStyle(charcoalEl).opacity; },
+  look:{ up(pts){ lookUp(pts); }, outline(pts){ judgeOutline(pts); }, get state(){ return LK; } },
   replayHeadless(s){ if(mode==='live') running=false; const [sw,sh]=s.device.sim; initSim(sw,sh,s.paperSeed); resetEngine(s.seed,sanitizeSettings({roles:'free',...s.settings})); let i=0; const ev=s.events,end=s.endTick;
     for(;;){ while(i<ev.length&&ev[i].t<=E.tick) applyEvent(ev[i++]); if(i>=ev.length&&E.tick>=end) break; engineTick(); } render(); return E.tick; } };
 })();
