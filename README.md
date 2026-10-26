@@ -68,6 +68,8 @@ Recording can be turned off. [Format in docs/DATA_FORMAT.md.](docs/DATA_FORMAT.m
 To add your own with a few lines of JavaScript (a model that continues strokes, a mirror of the person's habits), see [docs/PARTNER_API.md](docs/PARTNER_API.md).
 On GitHub Pages there is no Claude partner, only these.
 
+**Charcoal hints (柳炭).** When a person cannot see anything in their ink, a hint can help them look, without looking for them. *Export paper* (Session panel) saves the sheet; [`tools/charcoal_hints.ipynb`](tools/charcoal_hints.ipynb) ([open in Colab](https://colab.research.google.com/github/Lee-arts-02/Splashed-Ink/blob/main/tools/charcoal_hints.ipynb)) reads every blot in two ways: *generated*, by Stable Diffusion 1.5 with a LoRA trained only on 587 motifs cut from the *Mustard Seed Garden Manual* (img2img from the blot, so the model looks into your ink the way Song Di looked into a ruined wall); and *retrieved*, the manual motif whose silhouette fits the blot best. *Load charcoal* puts a layer over the paper in willow-charcoal grey; it fades within a minute and never becomes ink. Following it, ignoring it, or seeing something else is the person's decision, made with the brush. The training data (on the `lora-data` branch) and the hint tools ([`tools/charcoal.py`](tools/charcoal.py)) use only the manual, but the base model was trained on web images: the LoRA steers what it sees toward the manual, it does not make the seeing the manual's alone.
+
 **Conditions for a study.** Settings can be fixed from the address bar, for example
 `apps/splashed-ink/?undo=none&drying=normal&words=off&sees=paper&redo=final&lock=1`. Parameters are listed in [docs/FRICTION.md](docs/FRICTION.md).
 

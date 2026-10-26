@@ -565,6 +565,34 @@
               "description": "What the partner reports about its turn, for the record (for example which paintings the Reader borrowed from). Never shown to the person while painting."
             }
           }
+        },
+        {
+          "properties": {
+            "e": {
+              "const": "note"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "description": "A note for the record, such as the paper being exported. Does not change the paper."
+        },
+        {
+          "properties": {
+            "e": {
+              "const": "ch"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "description": "A charcoal layer (a faint hint from outside, such as the charcoal notebook) was shown over the paper: the file's name, or 'again'. It fades and never changes the ink, so it is not needed to replay the paper."
         }
       ]
     }

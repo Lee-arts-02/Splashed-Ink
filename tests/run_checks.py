@@ -289,6 +289,25 @@ with sync_playwright() as pw:
         check("the exported plan passes the schema", not issues, "; ".join(issues[:2]))
     browser.close()
 
+# --- charcoal hints: reading an exported paper, and the layer in the app
+sys.path.insert(0, str(ROOT / "tools"))
+try:
+    import charcoal as C, numpy as np
+    T, _ = C.load_paper(ROOT / "examples/paper-example.png"); bl = C.find_blots(T)
+    lines = C.extract_lines(C.to_model_image(C.square_crop(T, bl[0]["box"])[0]))
+    layer = C.charcoal_png(np.maximum(lines.mean() * 0, C.place(lines, C.square_crop(T, bl[0]["box"])[1], T.shape)))
+    check("the charcoal tools find the blots on an exported paper", len(bl) == 3 and layer.size == (T.shape[1], T.shape[0]), f"{len(bl)} blots")
+except ImportError as e:
+    print("skip  charcoal tools need numpy, scipy and pillow:", e)
+if RUN_SI:
+    with sync_playwright() as pw:
+        b = pw.chromium.launch(args=FLAGS); cp = b.new_page(viewport={"width": 240, "height": 360}); cp.set_default_timeout(120000)
+        cp.goto(SI); cp.wait_for_timeout(500); cp.evaluate("document.getElementById('start').click()"); cp.wait_for_timeout(300)
+        cp.set_input_files("#charcoalImport", str(ROOT / "examples/paper-example.png")); cp.wait_for_timeout(2500)
+        r = cp.evaluate("({o: +window.__si.charcoalShown(), ev: window.__si.session.events.filter(e => e.e === 'ch').length})")
+        check("a charcoal layer shows over the paper and is recorded", r["o"] > 0.3 and r["ev"] == 1, str(r))
+        b.close()
+
 # --- the shared lobe code must be the same in both apps
 kit = lambda f: (lambda t: t[t.index("// ==== LobeKit begin"):t.index("// ==== LobeKit end ====")])((ROOT / f).read_text())
 check("both apps describe lobes with the same code", kit("apps/machine-copy/index.html") == kit("apps/splashed-ink/index.html"))

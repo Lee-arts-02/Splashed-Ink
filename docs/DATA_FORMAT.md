@@ -129,6 +129,8 @@ Several events can share a tick; they apply in file order, before that tick's si
 | `pe` | `code` | the partner could not take its turn |
 | `rd` | | the partner's turn is undone, to be asked again |
 | `pr` | `partner`, `prompt` | a record of what was sent to the partner. Not needed to replay |
+| `note` | `text` | a note for the record, such as the paper being exported |
+| `ch` | `name` | a charcoal layer was shown over the paper (its file name, or `again`). It fades and never touches the ink |
 
 A partner's `gestures` are `pour` (`x`, `y`, `seconds`, optional `path` of `[x, y]` points, optional `ink`),
 `stroke` (`path` of 2 to 10 `[x, y]` points, `seconds`, optional `ink`: a line drawn with the brush),

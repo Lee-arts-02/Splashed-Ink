@@ -29,6 +29,9 @@ html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
 body{background:var(--paper);font-family:var(--serif);color:var(--ink);font-size:1.05rem;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#charcoal{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;opacity:0;z-index:1;mix-blend-mode:multiply}
+#charcoal.on{opacity:1;transition:opacity 1.6s ease}
+#charcoal.fade{opacity:0;transition:opacity 40s linear}
 button,input{font-family:var(--serif);color:inherit}
 button{cursor:pointer}
 button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
@@ -104,6 +107,7 @@ button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid va
 </head>
 <body>
 <canvas id="c" aria-label="Rice-paper canvas: press and hold to pour ink, tilt to let it run"></canvas>
+<img id="charcoal" alt="" aria-hidden="true">
 
 <div id="intro" role="dialog" aria-labelledby="t">
   <div class="intro-inner">
@@ -171,6 +175,9 @@ button:focus-visible,input:focus-visible,.opt:focus-visible{outline:2px solid va
   <h3 style="font-weight:500;margin:1rem 0 0">Saved sessions</h3>
   <ul class="sessions" id="sessList"></ul>
   <div class="row"><span class="file btn">Import a session<input id="sessImport" type="file" accept="application/json,.json"></span><span class="file btn">Load a lobe library<input id="libImport" type="file" accept="application/json,.json"></span></div>
+  <h3 style="font-weight:500;margin:1rem 0 0">Charcoal hints</h3>
+  <p class="blurb">Export the paper, read it with the charcoal notebook (tools/charcoal_hints.ipynb), then load one of its layers. It appears over the paper like a willow-charcoal underdrawing and fades away; it never becomes ink. Whether to follow it is yours to decide, with the brush.</p>
+  <div class="row"><button class="btn" id="paperExport" type="button">Export paper</button><span class="file btn">Load charcoal<input id="charcoalImport" type="file" accept="image/png,image/*"></span><button class="btn" id="charcoalAgain" type="button" disabled>Show it again</button></div>
   <p class="blurb" id="libInfo"></p>
   <p class="blurb" style="margin-top:.8rem">Records stay in this browser unless you export them. When you pass the paper, a picture of it and the details you allow are sent to your partner.</p>
 </section>
@@ -527,7 +534,7 @@ function applyEvent(ev){
     case 'pg': startActor(ev.gestures); break;
     case 'pe': E.aiTurn=false; break;
     case 'rd': restorePreAI(); break;
-    default: break;                                                            // 'pr' and 'note' are records only
+    default: break;                                                            // 'pr', 'note' and 'ch' (a charcoal layer shown) are records only
   } }
 
 // ================= session recording =================
@@ -1053,6 +1060,19 @@ addEventListener('keydown',e=>{ if(e.key==='Escape') closePanels(); });
 $('sessKeep').addEventListener('click',()=>{ keepRecord=!keepRecord; if(keepRecord&&session) saveSession(); renderSessions(); refreshHud(); });
 $('sessExport').addEventListener('click',async()=>{ if(!session) return; const s=session.endedAt?session:(()=>{ const c={...session,endTick:E.tick,summary:computeSummaryLive(session)}; return c; })(); report(await saveFile(`splashed-ink-${s.id}.json`,serialize(s))); });
 $('sessEnd').addEventListener('click',()=>endAndShow());
+// ---- charcoal hints: a faint layer from outside (the charcoal notebook) that fades and never touches the ink ----
+const charcoalEl=$('charcoal'); let charcoalT=null, charcoalURL=null;
+function showCharcoal(){ if(!charcoalURL) return; clearTimeout(charcoalT); charcoalEl.classList.remove('fade'); charcoalEl.classList.remove('on'); void charcoalEl.offsetWidth;
+  charcoalEl.classList.add('on'); charcoalT=setTimeout(()=>{ charcoalEl.classList.remove('on'); charcoalEl.classList.add('fade'); },14000); }
+$('paperExport').addEventListener('click',()=>{ render(); const url=cv.toDataURL('image/png'), name=`splashed-ink-paper-${session?session.id:'sheet'}-t${E.tick}.png`;
+  try{ const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); showHint('Paper exported. Read it with the charcoal notebook.',4000); }
+  catch(e){ showHint('Export is not available in this view.',4000); }
+  if(live()) emit('note',{text:'paper exported: '+name}); });
+$('charcoalImport').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; e.target.value='';
+  if(charcoalURL) URL.revokeObjectURL(charcoalURL); charcoalURL=URL.createObjectURL(f); charcoalEl.src=charcoalURL;
+  charcoalEl.onload=()=>{ closePanels(); showCharcoal(); $('charcoalAgain').disabled=false; };
+  if(live()) emit('ch',{name:f.name.slice(0,120)}); });
+$('charcoalAgain').addEventListener('click',()=>{ closePanels(); showCharcoal(); if(live()) emit('ch',{name:'again'}); });
 $('libImport').addEventListener('change',async e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; e.target.value='';
   try{ const t=await f.text(), j=JSON.parse(t); if(!setLibrary(j,'imported')) throw new Error('format'); const kept=lsSet('splashed-ink:lobes',t);
     showHint(`The Reader now learns from ${LIB.paintings.length} paintings (${LIB.lobes.length} lobes).${kept?'':' It is too large to keep in this browser, so load it again next time.'}`,6000); renderSessions(); }
@@ -1128,7 +1148,7 @@ window.__si={ get E(){return E;}, get session(){return session;}, get mode(){ret
   pd(id,x,y,p){ emit('pd',{i:id,x:r4(x),y:r4(y),p:p||0.5}); }, pm(id,x,y,p){ emit('pm',{i:id,x:r4(x),y:r4(y),p:p||0.5}); }, pu(id){ emit('pu',{i:id}); },
   g(x,y){ emit('g',{x:r3(x),y:r3(y)}); }, tool(v){ emit('tl',{v}); }, knob(k,v){ emit('k',{k,v}); }, undo(){ emit('un',{}); }, sheet(s){ emit('sh',{s}); }, pot(c){ emit('pot',{c}); },
   pass(gestures,words){ emit('pa',{partner:'test',words:words||undefined,sees:E.settings.sees}); emit('pg',{gestures}); }, redo(){ emit('rd',{}); },
-  finish(){ return finishSession(); }, draw(){ render(); }, paper(){ const m=paperMaps(); return {cols:m.cols,rows:m.rows,tone:Array.from(m.tone),wet:Array.from(m.wet)}; }, partner(name,ctx){ return window.InkPartners[name].turn(ctx); }, setLibrary(j){ return setLibrary(j,'test'); }, setMotifs(j){ return setMotifs(j,'test'); }, get LIB(){ return LIB; }, snapDepth(){ return snapStack.length; },
+  finish(){ return finishSession(); }, draw(){ render(); }, paper(){ const m=paperMaps(); return {cols:m.cols,rows:m.rows,tone:Array.from(m.tone),wet:Array.from(m.wet)}; }, partner(name,ctx){ return window.InkPartners[name].turn(ctx); }, setLibrary(j){ return setLibrary(j,'test'); }, setMotifs(j){ return setMotifs(j,'test'); }, get LIB(){ return LIB; }, snapDepth(){ return snapStack.length; }, charcoalShown(){ return getComputedStyle(charcoalEl).opacity; },
   replayHeadless(s){ if(mode==='live') running=false; const [sw,sh]=s.device.sim; initSim(sw,sh,s.paperSeed); resetEngine(s.seed,sanitizeSettings({roles:'free',...s.settings})); let i=0; const ev=s.events,end=s.endTick;
     for(;;){ while(i<ev.length&&ev[i].t<=E.tick) applyEvent(ev[i++]); if(i>=ev.length&&E.tick>=end) break; engineTick(); } render(); return E.tick; } };
 })();
